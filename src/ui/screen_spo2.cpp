@@ -1,6 +1,19 @@
 #include "screen_spo2.h"
 #include "vn_font.h"
 
+// PROVISIONAL, and now measuring something different than when it was chosen.
+//
+// This was picked while max30102_service.cpp forced any SQI below 40 up to 75,
+// so almost every beat cleared 45 whatever the perfusion actually was. That
+// floor is gone -- it inverted the scale and would have made PPG_MIN_SQI gate
+// the vital alerts backwards -- so signalQuality now reports the honest
+// perfusion figure, which on a wrist runs lower and may well sit under 45 much
+// of the time.
+//
+// The consequence to watch for is this screen showing "TÍN HIỆU YẾU"
+// permanently. If it does, the fix is to read the real SQI values off a worn
+// session in the serial log and set this from them, together with
+// PPG_MIN_SQI -- not to reinstate a floor that made a bad reading look good.
 static const uint8_t SPO2_MIN_QUALITY = 45;
 
 void renderSpO2Screen(TFT_eSprite& spr) {

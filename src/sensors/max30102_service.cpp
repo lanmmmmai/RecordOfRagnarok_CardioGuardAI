@@ -202,6 +202,23 @@ void updateMAX30102Service() {
         uint32_t ir  = particleSensor.getFIFOIR();
         uint32_t red = particleSensor.getFIFORed();
         particleSensor.nextSample();
+
+        // Counts every sample the FIFO produced, including the ones dropped
+        // below as out-of-contact. It used to be incremented after the contact
+        // check, which made it a count of *processed* samples while
+        // g_samplesSinceBeat inside detectBeatAdaptive counted *delivered*
+        // ones -- two clocks running at different rates.
+        //
+        // RR intervals are measured in this unit and converted with a fixed
+        // 5 ms per sample, so any sample the counter skipped shortened the
+        // measured interval without shortening the real one, and a shortened
+        // interval reads as a faster heart. The 45-180 gate and the median
+        // filter hid the small cases, which is what made it worth fixing: a
+        // systematic bias toward high BPM that never looks like an error.
+        //
+        // The sensor free-runs at a fixed 200 Hz regardless of whether a
+        // finger is present, so counting the dropped samples is what makes
+        // the fixed-period conversion true.
         sampleIndex++;
 
         g_watchState.irRaw = ir;
@@ -306,37 +323,86 @@ void updateMAX30102Service() {
                                     float rRatio = (acRedPp / g_dcEstRed) / (acIrPp / g_dcEstIr);
                                     float instantSpo2 = 104.0f - 17.0f * rRatio;
 
-                                    if (instantSpo2 > 100.0f) instantSpo2 = 99.0f;
-                                    if (instantSpo2 < 80.0f)  instantSpo2 = 92.0f; // bounds
+                                    // Out of range means discard, not substitute.
+                                    //
+                                    // This was `if (instantSpo2 < 80) instantSpo2 = 92`,
+                                    // labelled "bounds". It is not a bound -- a bound
+                                    // on 80 is 80. 92 is a value invented for a
+                                    // measurement that failed, and it sits two points
+                                    // above VITAL_SPO2_LOW, so a computation returning
+                                    // 60 -- whether from a noisy waveform or from real
+                                    // hypoxia -- reached the wearer as a reassuring
+                                    // "92%" and reached updateVitalMonitor() as a
+                                    // number too high to alert on. Of all the
+                                    // directions this device can be wrong, silently
+                                    // reporting a healthy oxygen level is the worst
+                                    // one available.
+                                    //
+                                    // Clamping to 80 instead would be honest about the
+                                    // arithmetic but still dishonest about the
+                                    // measurement: below 80 from wrist PPG is
+                                    // overwhelmingly a bad waveform rather than a
+                                    // dying wearer, and either way the one true
+                                    // statement is that this beat produced nothing
+                                    // usable. So the sample is dropped and the
+                                    // previous median stands, which is the same thing
+                                    // that already happens when the AC amplitude is
+                                    // too small to work with a few lines above.
+                                    if (instantSpo2 > 100.0f) instantSpo2 = 100.0f;
 
-                                    spo2History[spo2Index] = (uint8_t)(instantSpo2 + 0.5f);
-                                    spo2Index = (spo2Index + 1) % SPO2_SIZE;
+                                    // Only the SpO2 update is skipped. The beat
+                                    // itself was fine and the heart rate derived
+                                    // from it is already committed above.
+                                    if (instantSpo2 >= 80.0f) {
+                                        spo2History[spo2Index] = (uint8_t)(instantSpo2 + 0.5f);
+                                        spo2Index = (spo2Index + 1) % SPO2_SIZE;
 
-                                    // Median Filter on SpO2 History
-                                    uint8_t tempSpo2[SPO2_SIZE];
-                                    uint8_t validSpo2 = 0;
-                                    for (uint8_t s = 0; s < SPO2_SIZE; s++) {
-                                        if (spo2History[s] > 0) tempSpo2[validSpo2++] = spo2History[s];
-                                    }
-                                    if (validSpo2 >= 1) {
-                                        for (uint8_t i = 0; i < validSpo2 - 1; i++) {
-                                            for (uint8_t j = i + 1; j < validSpo2; j++) {
-                                                if (tempSpo2[i] > tempSpo2[j]) {
-                                                    uint8_t t = tempSpo2[i]; tempSpo2[i] = tempSpo2[j]; tempSpo2[j] = t;
+                                        // Median Filter on SpO2 History
+                                        uint8_t tempSpo2[SPO2_SIZE];
+                                        uint8_t validSpo2 = 0;
+                                        for (uint8_t s = 0; s < SPO2_SIZE; s++) {
+                                            if (spo2History[s] > 0) tempSpo2[validSpo2++] = spo2History[s];
+                                        }
+                                        if (validSpo2 >= 1) {
+                                            for (uint8_t i = 0; i < validSpo2 - 1; i++) {
+                                                for (uint8_t j = i + 1; j < validSpo2; j++) {
+                                                    if (tempSpo2[i] > tempSpo2[j]) {
+                                                        uint8_t t = tempSpo2[i]; tempSpo2[i] = tempSpo2[j]; tempSpo2[j] = t;
+                                                    }
                                                 }
                                             }
+                                            g_watchState.spo2Percent = tempSpo2[validSpo2 / 2];
+                                            g_watchState.spo2Valid = true;
                                         }
-                                        g_watchState.spo2Percent = tempSpo2[validSpo2 / 2];
-                                        g_watchState.spo2Valid = true;
                                     }
                                 }
                             }
 
-                            // Signal Quality (SQI) from Perfusion Index
+                            // Signal Quality (SQI) from Perfusion Index.
+                            //
+                            // The floor used to be `if (sqi < 40) sqi = 75`, which
+                            // inverted the scale over its lower half: weak perfusion
+                            // -- the state where the waveform is least trustworthy --
+                            // reported *better* quality than moderate perfusion, and
+                            // 75 meant either "genuinely good" or "too bad to
+                            // measure" with no way to tell which.
+                            //
+                            // That mattered beyond the progress bar. PPG_MIN_SQI
+                            // gates the heart-rate threshold alerts in
+                            // vital_monitor.cpp, and it is currently 1 with a comment
+                            // urging whoever reads real values to raise it. Doing so
+                            // would have made the gate run backwards: every scrap of
+                            // noise entering at 75 while honest mid-perfusion beats
+                            // at 40-74 were rejected. The floor had to go before that
+                            // number can be tuned against anything.
+                            //
+                            // Now monotonic and clamped only at the top. Expect the
+                            // displayed figure to drop -- that is the real scale
+                            // becoming visible, not a regression.
                             float pi = ((float)(cycleMaxIr - cycleMinIr) / g_dcEstIr) * 100.0f;
                             int sqi = (int)(pi * 50.0f);
                             if (sqi > 100) sqi = 100;
-                            if (sqi < 40) sqi = 75;
+                            if (sqi < 0) sqi = 0;
                             g_watchState.signalQuality = (uint8_t)sqi;
                         }
                     }
@@ -351,8 +417,22 @@ void updateMAX30102Service() {
         }
     }
 
-    // Guard against stale reading if skin contact is lost
-    if (g_watchState.skinContact && lastBeatMs > 0 && (millis() - lastBeatMs >= 3500)) {
+    // Staleness guard: a number nobody has confirmed for 3.5 s stops being a
+    // reading and becomes a memory.
+    //
+    // This used to require skinContact, which made it unreachable in the one
+    // case it most needed to cover. When the wrist leaves the sensor,
+    // skinContact goes false and the guard stops running, so the last BPM sat
+    // on the screen indefinitely. resetMeasurement() in the contact-loss branch
+    // was the only thing clearing it, and that needs 200 consecutive
+    // sub-threshold samples -- so an IR level hovering around the threshold,
+    // which is exactly what a wrist shifting under a strap produces, kept
+    // resetting the counter and never got there. The wearer saw a stale heart
+    // rate from a sensor touching nothing.
+    //
+    // Dropping the skinContact term makes elapsed time alone the test, which is
+    // what "stale" means. It runs in both states now.
+    if (lastBeatMs > 0 && (millis() - lastBeatMs >= 3500)) {
         g_watchState.hrValid = false;
         g_watchState.spo2Valid = false;
     }
