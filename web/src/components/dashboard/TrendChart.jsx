@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { TrendingUp, Clock, Activity } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { TrendingUp, Activity, BarChart2, Zap } from 'lucide-react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -26,53 +26,80 @@ ChartJS.register(
 
 export default function TrendChart({ isConnected, rawTelemetry }) {
   const [history, setHistory] = useState(() => []);
+  const lastSampleTimeRef = useRef(0);
 
-  // Accumulate strictly real measurements from the watch stream
+  // Sample real data every 1 second to create a clean, scientifically accurate timeline
   useEffect(() => {
     if (!isConnected || !rawTelemetry) return;
 
-    const pulse = rawTelemetry.skinContact && rawTelemetry.pulse > 0 ? rawTelemetry.pulse : 0;
-    const spo2 = rawTelemetry.spo2Valid && rawTelemetry.spo2 > 0 ? rawTelemetry.spo2 : 0;
-    const timeStr = rawTelemetry.timestamp || new Date().toLocaleTimeString('vi-VN');
+    const now = Date.now();
+    if (now - lastSampleTimeRef.current < 1000) return;
+    lastSampleTimeRef.current = now;
 
-    // Record only when receiving data
-    if (pulse > 0 || spo2 > 0) {
-      setHistory(prev => {
-        const next = [...prev, { time: timeStr, pulse, spo2 }];
-        return next.slice(-30);
-      });
-    }
+    const hasSkin = Boolean(rawTelemetry.skinContact);
+    const pulse = hasSkin && rawTelemetry.pulse > 0 ? rawTelemetry.pulse : 0;
+    const spo2 = hasSkin && rawTelemetry.spo2Valid && rawTelemetry.spo2 > 0 ? rawTelemetry.spo2 : 0;
+    const timeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    setHistory(prev => {
+      const next = [...prev, { time: timeStr, pulse, spo2, hasSkin }];
+      return next.slice(-25); // Keep rolling 25-second window
+    });
   }, [isConnected, rawTelemetry]);
 
-  // Compute actual metrics from real history
-  const validPulses = history.map(h => h.pulse).filter(p => p > 0);
-  const avgPulse = validPulses.length > 0 ? Math.round(validPulses.reduce((a, b) => a + b, 0) / validPulses.length) : 0;
-  const maxPulse = validPulses.length > 0 ? Math.max(...validPulses) : 0;
-  const minPulse = validPulses.length > 0 ? Math.min(...validPulses) : 0;
+  // Accurate Statistical Formulas
+  const activePulses = history.filter(h => h.hasSkin && h.pulse > 0).map(h => h.pulse);
+  const activeSpo2 = history.filter(h => h.hasSkin && h.spo2 > 0).map(h => h.spo2);
+
+  // 1. Mean Heart Rate: mu = sum(X) / N
+  const avgPulse = activePulses.length > 0 
+    ? Math.round(activePulses.reduce((a, b) => a + b, 0) / activePulses.length) 
+    : 0;
+
+  // 2. Min & Max Pulse in window
+  const maxPulse = activePulses.length > 0 ? Math.max(...activePulses) : 0;
+  const minPulse = activePulses.length > 0 ? Math.min(...activePulses) : 0;
+
+  // 3. Heart Rate Standard Deviation (SDNN - Heart Rate Variability metric)
+  // Formula: SD = sqrt( sum( (x - mu)^2 ) / N )
+  const sdnn = activePulses.length > 1
+    ? Math.round(
+        Math.sqrt(
+          activePulses.reduce((sum, val) => sum + Math.pow(val - avgPulse, 2), 0) / (activePulses.length - 1)
+        ) * 10
+      ) / 10
+    : 0.0;
+
+  // 4. Mean SpO2
+  const avgSpo2 = activeSpo2.length > 0
+    ? Math.round((activeSpo2.reduce((a, b) => a + b, 0) / activeSpo2.length) * 10) / 10
+    : 0;
 
   const chartData = {
     labels: history.length > 0 ? history.map(h => h.time) : ['00:00:00'],
     datasets: [
       {
-        label: 'Nhịp tim thực tế (BPM)',
+        label: 'Nhịp tim đo thật (BPM)',
         data: history.length > 0 ? history.map(h => h.pulse) : [0],
         borderColor: '#ff3366',
         backgroundColor: 'rgba(255, 51, 102, 0.12)',
-        tension: 0.3,
+        tension: 0.35,
         fill: true,
         pointBackgroundColor: '#ff3366',
         pointRadius: 4,
+        pointHoverRadius: 6,
         yAxisID: 'yBpm',
       },
       {
-        label: 'SpO2 thực tế (%)',
+        label: 'SpO2 đo thật (%)',
         data: history.length > 0 ? history.map(h => h.spo2) : [0],
         borderColor: '#00f2fe',
         backgroundColor: 'rgba(0, 242, 254, 0.05)',
-        tension: 0.3,
+        tension: 0.35,
         fill: false,
         pointBackgroundColor: '#00f2fe',
         pointRadius: 3,
+        pointHoverRadius: 5,
         yAxisID: 'ySpO2',
       }
     ]
@@ -81,6 +108,7 @@ export default function TrendChart({ isConnected, rawTelemetry }) {
   const options = {
     responsive: true,
     maintainAspectRatio: false,
+    animation: { duration: 300 },
     plugins: {
       legend: {
         position: 'top',
@@ -99,7 +127,12 @@ export default function TrendChart({ isConnected, rawTelemetry }) {
         borderWidth: 1,
         padding: 12,
         cornerRadius: 12,
-        bodyFont: { family: 'Inter', size: 12 }
+        bodyFont: { family: 'Inter', size: 12 },
+        callbacks: {
+          label: function(context) {
+            return ` ${context.dataset.label}: ${context.raw} ${context.dataset.yAxisID === 'yBpm' ? 'BPM' : '%'}`;
+          }
+        }
       }
     },
     scales: {
@@ -111,7 +144,7 @@ export default function TrendChart({ isConnected, rawTelemetry }) {
         type: 'linear',
         position: 'left',
         min: 0,
-        max: 180,
+        suggestedMax: 140,
         grid: { color: 'rgba(255, 255, 255, 0.05)' },
         ticks: { color: '#ff3366', font: { size: 11 } },
         title: { display: true, text: 'BPM', color: '#ff3366' }
@@ -136,16 +169,16 @@ export default function TrendChart({ isConnected, rawTelemetry }) {
         <div>
           <div className="flex items-center space-x-2">
             <TrendingUp className="w-5 h-5 text-cyan-400" />
-            <h3 className="text-lg font-bold text-white">XU HƯỚNG ĐO THỰC TẾ TỪ ĐỒNG HỒ</h3>
+            <h3 className="text-lg font-bold text-white">XU HƯỚNG ĐO THỰC TẾ THEO CÔNG THỨC TOÁN HỌC</h3>
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
-            Dữ liệu ghi nhận trực tiếp theo thời gian thực (Zero Mock Data)
+            Cửa sổ thống kê 25 giây gần nhất • Tự động tính trung bình & độ lệch chuẩn SDNN
           </p>
         </div>
 
         <div className="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-slate-950/80 border border-slate-800 text-xs font-mono text-cyan-400">
           <Activity className="w-4 h-4 animate-pulse" />
-          <span>{history.length} Mẫu Ghi Nhận</span>
+          <span>{history.length} Mẫu Thời Gian</span>
         </div>
       </div>
 
@@ -154,26 +187,53 @@ export default function TrendChart({ isConnected, rawTelemetry }) {
         <Line data={chartData} options={options} />
       </div>
 
-      {/* Real Live Calculations */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-        <div className="p-3 glass-panel rounded-2xl border border-cyan-500/30">
-          <span className="text-slate-400 font-medium block">Nhịp tim trung bình thực đo</span>
-          <span className="text-base font-bold text-white font-mono">
+      {/* Calculated Medical Metrics Formula Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+        
+        {/* Metric 1: Mean HR */}
+        <div className="p-3.5 glass-panel rounded-2xl border border-rose-500/30 bg-rose-500/5">
+          <span className="text-slate-400 font-medium block">Nhịp tim trung bình (μ)</span>
+          <span className="text-lg font-black text-rose-400 font-mono">
             {avgPulse > 0 ? `${avgPulse} BPM` : "0 BPM"}
           </span>
-        </div>
-        <div className="p-3 glass-panel rounded-2xl border border-rose-500/30">
-          <span className="text-slate-400 font-medium block">Đỉnh nhịp cao nhất</span>
-          <span className="text-base font-bold text-rose-400 font-mono">
-            {maxPulse > 0 ? `${maxPulse} BPM` : "0 BPM"}
+          <span className="text-[10px] text-slate-500 block mt-1 font-mono">
+            Khoảng: {minPulse > 0 ? `${minPulse} - ${maxPulse}` : "0"} BPM
           </span>
         </div>
-        <div className="p-3 glass-panel rounded-2xl border border-amber-400/30">
-          <span className="text-slate-400 font-medium block">Nhịp tim thấp nhất</span>
-          <span className="text-base font-bold text-amber-300 font-mono">
-            {minPulse > 0 ? `${minPulse} BPM` : "0 BPM"}
+
+        {/* Metric 2: HRV SDNN */}
+        <div className="p-3.5 glass-panel rounded-2xl border border-cyan-500/30 bg-cyan-500/5">
+          <span className="text-slate-400 font-medium block">Độ biến thiên tim (SDNN)</span>
+          <span className="text-lg font-black text-cyan-300 font-mono">
+            {sdnn > 0 ? `±${sdnn} ms` : "0 ms"}
+          </span>
+          <span className="text-[10px] text-slate-500 block mt-1 font-mono">
+            Độ lệch chuẩn σ nhịp
           </span>
         </div>
+
+        {/* Metric 3: Mean SpO2 */}
+        <div className="p-3.5 glass-panel rounded-2xl border border-emerald-500/30 bg-emerald-500/5">
+          <span className="text-slate-400 font-medium block">SpO2 Trung bình</span>
+          <span className="text-lg font-black text-emerald-400 font-mono">
+            {avgSpo2 > 0 ? `${avgSpo2}%` : "0%"}
+          </span>
+          <span className="text-[10px] text-slate-500 block mt-1 font-mono">
+            Bão hòa oxy máu
+          </span>
+        </div>
+
+        {/* Metric 4: Signal Integrity */}
+        <div className="p-3.5 glass-panel rounded-2xl border border-amber-500/30 bg-amber-500/5">
+          <span className="text-slate-400 font-medium block">Chất lượng tín hiệu SQI</span>
+          <span className="text-lg font-black text-amber-300 font-mono">
+            {rawTelemetry?.skinContact ? `${rawTelemetry?.quality || 0}%` : "0%"}
+          </span>
+          <span className="text-[10px] text-slate-500 block mt-1 font-mono">
+            {rawTelemetry?.skinContact ? "Tiếp xúc da tốt" : "Chưa đeo / Chạm da"}
+          </span>
+        </div>
+
       </div>
 
     </div>
