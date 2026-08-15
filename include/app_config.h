@@ -101,6 +101,28 @@
 // up well inside the window that matters.
 #define PPG_GATE_ESCAPE_BEATS    8
 
+// Scalar Kalman on the displayed heart rate (DSP stage 5). The median filter
+// removes outright spikes; this handles what is left, trading responsiveness
+// for smoothness according to how much the two numbers below disagree.
+//
+// Process noise: how fast a real heart rate changes. Smaller means trust the
+// model, which is smoother but slower to follow a genuine change.
+#define PPG_KALMAN_Q             0.5f
+
+// Measurement noise: how wrong a single beat measurement can be. Larger means
+// filter harder. At Q=0.5 and R=4.0 the steady-state gain is about 0.28, so
+// roughly a quarter of each new measurement is taken -- a few beats to move
+// 10 BPM, which is faster than any physiological change worth showing.
+#define PPG_KALMAN_R             4.0f
+
+// Signal-quality floor below which no heart rate is displayed at all.
+//
+// START AT 20, NOT 75. The SQI scale here is `perfusion * 50` -- an
+// uncalibrated ratio, not a meaningful percentage. Setting 75 before the scale
+// has been read off a real wrist would mean the screen never shows a number.
+// Read the actual SQI values from the log in Giai đoạn 3b, then tighten.
+#define PPG_MIN_SQI              20
+
 // ---------------------------------------------------------------------------
 // Fall detection, wrist-worn
 // ---------------------------------------------------------------------------

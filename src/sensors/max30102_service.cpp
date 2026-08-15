@@ -59,6 +59,20 @@ static unsigned long lastQualityCalc = 0;
 // Counts the once-a-second quality passes, so the HRV log fires every tenth.
 static uint8_t hrvLogTick = 0;
 
+// Scalar Kalman on the displayed rate -- DSP stage 5. Ten lines, no library.
+// It leans on the measurement while measurements agree with each other, and on
+// its own estimate while they scatter.
+static float kalmanX = 0.0f;   // estimate
+static float kalmanP = 1.0f;   // error covariance
+
+static float kalmanUpdate(float measurement) {
+    kalmanP += PPG_KALMAN_Q;
+    float k = kalmanP / (kalmanP + PPG_KALMAN_R);
+    kalmanX += k * (measurement - kalmanX);
+    kalmanP *= (1.0f - k);
+    return kalmanX;
+}
+
 // Short history of total acceleration, used to reject samples taken while the
 // arm is swinging. Wrist PPG is dominated by motion artefact otherwise, and
 // this is the single most important reason wrist readings can be trusted.
@@ -94,6 +108,8 @@ static void resetMeasurement() {
     sampleIndex = 0;
     lastBeatSample = 0;
     gateRejections = 0;
+    kalmanX = 0.0f;
+    kalmanP = 1.0f;
     // Drop the RR history too. It is called on every loss of skin contact, and
     // an interval spanning a gap where the finger was off the sensor is not a
     // heartbeat interval -- it would enter the window as one huge outlier and
@@ -240,6 +256,14 @@ void updateMAX30102Service() {
                         // escape hatch fire over and over without ever
                         // escaping.
                         g_watchState.heartRateBPM = (uint16_t)bpm;
+                        // The Kalman estimate has to move with it. Leaving it
+                        // parked on the stuck value would let it pull the very
+                        // next median straight back there, undoing the escape
+                        // one beat after it fired. Widening P as well tells the
+                        // filter it is uncertain again, so it re-locks quickly
+                        // instead of crawling.
+                        kalmanX = bpm;
+                        kalmanP = 1.0f;
                         isSpike = false;
                     }
 
@@ -271,8 +295,10 @@ void updateMAX30102Service() {
                                     }
                                 }
                             }
-                            // True Median Filter selection from sorted temp array
-                            g_watchState.heartRateBPM = temp[valid / 2];
+                            // True Median Filter selection from sorted temp array,
+                            // then stage 5 smoothing on top of it.
+                            float smoothed = kalmanUpdate((float)temp[valid / 2]);
+                            g_watchState.heartRateBPM = (uint16_t)(smoothed + 0.5f);
                             g_watchState.hrValid = true;
                             g_watchState.heartRateHistory[g_watchState.historyIndex] =
                                 g_watchState.heartRateBPM;
@@ -345,6 +371,14 @@ void updateMAX30102Service() {
         }
         irMin = 0xFFFFFFFF;
         irMax = 0;
+
+        // A correct number computed from rubbish is still a wrong number.
+        // Below the quality floor, showing nothing beats showing a figure
+        // someone is going to believe.
+        if (g_watchState.signalQuality < PPG_MIN_SQI) {
+            g_watchState.hrValid = false;
+            g_watchState.spo2Valid = false;
+        }
 
         // Stale reading guard: if no beat has landed for several seconds the
         // displayed number no longer describes the present.
