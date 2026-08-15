@@ -51,7 +51,7 @@
 // LED drive current. 0x24 (~7mA) is a finger-on-sensor setting; skin on the
 // underside of the wrist has far fewer capillaries and needs more light.
 // Raise or lower this against the raw IR values in the serial log.
-#define MAX30102_LED_BRIGHTNESS  0x40
+#define MAX30102_LED_BRIGHTNESS  0x30
 
 // Minimum IR reading that counts as skin contact.
 //
@@ -60,11 +60,11 @@
 // watch as "in contact with skin" at all times. Provisional value pending a
 // worn measurement -- log a session with the watch on the wrist, then set this
 // midway between the ~21,900 floor and the worn reading.
-#define PPG_CONTACT_IR_THRESHOLD 10000UL
+#define PPG_CONTACT_IR_THRESHOLD 25000UL
 
 // Above this accelerometer standard deviation (in g) the arm is moving too
 // much for the PPG waveform to mean anything.
-#define PPG_MOTION_STD_G         0.25f
+#define PPG_MOTION_STD_G         0.08f
 
 // ---------------------------------------------------------------------------
 // Fall detection, wrist-worn
