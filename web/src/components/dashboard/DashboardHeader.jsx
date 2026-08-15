@@ -1,11 +1,9 @@
 import React from 'react';
-import { UserCheck, Activity, Wifi, Battery, AlertTriangle, Download, HeartPulse, Lock } from 'lucide-react';
+import { Wifi, Battery, AlertTriangle, Download, HeartPulse } from 'lucide-react';
 
 export default function DashboardHeader({
   userProfile,
   simulatedBpm,
-  isSimulating,
-  setIsSimulating,
   onTriggerSOS,
   onExportReport
 }) {
@@ -26,14 +24,10 @@ export default function DashboardHeader({
           </div>
 
           <div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center space-x-2">
               <h1 className="text-xl md:text-2xl font-black text-white">{userProfile.name}</h1>
               <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 text-xs font-bold font-mono border border-cyan-500/30">
                 ID: {userProfile.id}
-              </span>
-              <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-bold font-mono border border-emerald-500/30 flex items-center space-x-1">
-                <Lock className="w-3 h-3" />
-                <span>CHẾ ĐỘ 1 NGƯỜI DÙNG DUY NHẤT</span>
               </span>
             </div>
 
