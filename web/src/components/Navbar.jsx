@@ -1,7 +1,17 @@
 import React from 'react';
-import { Shield, Activity, Sparkles, LayoutDashboard, AlertTriangle, FileText, Wifi } from 'lucide-react';
+import { Shield, Sparkles, LayoutDashboard, Wifi } from 'lucide-react';
+import { websocketBridgeService } from '../services/websocketBridgeService';
 
-export default function Navbar({ activeTab, setActiveTab, onTriggerSOS, simulatedBpm }) {
+export default function Navbar({ activeTab, setActiveTab }) {
+  const [isConnected, setIsConnected] = React.useState(false);
+
+  React.useEffect(() => {
+    const unsub = websocketBridgeService.onStatusChange((info) => {
+      setIsConnected(info.isConnected);
+    });
+    return unsub;
+  }, []);
+
   return (
     <nav className="sticky top-0 z-50 w-full glass-panel border-b border-slate-800 px-4 py-3 transition-all">
       <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -57,22 +67,16 @@ export default function Navbar({ activeTab, setActiveTab, onTriggerSOS, simulate
           </button>
         </div>
 
-        {/* Right Status Pill & Actions */}
+        {/* Right Status Pill */}
         <div className="flex items-center space-x-3">
-          {/* Live Device Status */}
-          <div className="hidden lg:flex items-center space-x-2 px-3 py-1.5 rounded-xl glass-panel text-xs text-slate-300 border border-emerald-500/30">
-            <Wifi className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-            <span className="font-mono text-emerald-400 font-bold">ĐỒNG HỒ SAFEWATCH ONLINE</span>
+          <div className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-xl glass-panel text-xs font-mono border ${
+            isConnected ? 'text-emerald-400 border-emerald-500/40 bg-emerald-500/10' : 'text-amber-300 border-amber-500/40 bg-amber-500/10 animate-pulse'
+          }`}>
+            <Wifi className="w-3.5 h-3.5 text-current" />
+            <span className="font-bold">
+              {isConnected ? "ĐỒNG HỒ SAFEWATCH ONLINE" : "TỰ ĐỘNG DÒ TÌM ĐỒNG HỒ..."}
+            </span>
           </div>
-
-          {/* Simulated Emergency Trigger Button */}
-          <button
-            onClick={onTriggerSOS}
-            className="px-3.5 py-2 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-red-600/30 flex items-center space-x-1.5 transition-all transform hover:scale-105 active:scale-95"
-          >
-            <AlertTriangle className="w-4 h-4 animate-pulse" />
-            <span>Giả Lập Té Ngã</span>
-          </button>
         </div>
 
       </div>
