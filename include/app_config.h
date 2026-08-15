@@ -230,7 +230,13 @@
 // threshold is deliberately higher than FALL_IMPACT_G so that everyday
 // gestures -- setting a mug down hard, clapping -- still have to survive the
 // stillness and orientation phases before anything is raised.
-#define FALL_IMPACT_STANDALONE_G  3.2f
+//
+// Raised 3.2 -> 3.5 on 2026-08-16 from the two fall captures. The 13 recorded
+// falls peak at 3.53g and above; the loudest non-fall movement in the same
+// recordings reaches 3.09g. At 3.2 the gap between them was 0.11g, which is
+// less than the run-to-run spread of a single gesture. 3.5 keeps all 13 falls
+// and widens the margin to 0.41g, so it costs nothing measured and buys room.
+#define FALL_IMPACT_STANDALONE_G  3.5f
 
 // How long after a free fall an impact still counts as belonging to it.
 #define FALL_IMPACT_WINDOW_MS     1500UL
@@ -265,15 +271,51 @@
 // certain to stay silent the harder the wearer tried to help themselves.
 //
 // A ratio keeps the meaning (mostly motionless, not walking around) while
-// tolerating the two or three seconds of trying to get up. 0.70 is a starting
-// point, not a measurement: it says roughly two thirds of the window must be
-// quiet. The confirmation log prints calm/total on every event, so a session
-// of real falls gives the number to replace it with.
-#define FALL_STILLNESS_MIN_CALM_RATIO  0.70f
+// tolerating the two or three seconds of trying to get up.
+//
+// 0.70 was that starting point. Replaced with 0.50 on 2026-08-16 from the
+// sessions the old comment asked for: across 13 recorded falls the calm ratio
+// runs 0.59 to 1.00, so 0.70 threw away the one fall at 0.59 -- a wearer who
+// kept struggling, which is not evidence against having fallen. Nothing is
+// given up by the change: the three non-fall events never reach confirmation
+// at all, so no ratio of theirs is ever tested. 0.50 sits below the lowest
+// real fall with margin and still means "motionless for most of the window".
+#define FALL_STILLNESS_MIN_CALM_RATIO  0.50f
 
 // Phase 4 -- posture must actually have changed, in degrees between the
 // gravity direction before the event and after it.
-#define FALL_ORIENTATION_MIN_DEG  30.0f
+//
+// DISABLED (0) on 2026-08-16. Zero switches the test off entirely rather than
+// lowering it; fall_detector.cpp special-cases it, and the angle is still
+// computed and printed on every confirmation line.
+//
+// The measurement that forced this. Two capture sessions, same firmware, same
+// 30 deg threshold, thirteen real falls between them:
+//
+//     log_nga_   arms down    6 falls   tilt  13-27 deg    1 of 6 caught
+//     log_nga2_  arms out     7 falls   tilt 139-176 deg   7 of 7 caught
+//
+// The threshold was not measuring whether the wearer fell. It was measuring
+// where their arm happened to be, and it separated the two sessions almost
+// perfectly while separating falls from non-falls not at all. An elderly
+// person going down does not get to choose their arm position, so a check
+// that only passes for one of them is worse than no check: it fails silently,
+// and it fails hardest on the arms-down posture a real collapse produces.
+//
+// Lowering it to ~12 deg would have scored 12 of 13 on this data, and that is
+// the tempting move. It is rejected on purpose -- it keeps a feature whose
+// measured behaviour is posture-dependent and merely tunes the dependence
+// until this particular pair of recordings passes.
+//
+// What replaces it: nothing yet, and that is the honest state. With tilt off,
+// impact peak plus the stillness ratio give 13 of 13 falls and 0 of 3 false
+// alarms on everything recorded so far. Three negatives is far too few to
+// claim a false-alarm rate, so the number that is actually unknown is how
+// often this fires during an ordinary day. Turning the check back on -- or
+// replacing it with something that measures the fall rather than the wrist --
+// needs a long capture of normal living first. See the note on
+// FALL_LOG_RAW_SAMPLES below.
+#define FALL_ORIENTATION_MIN_DEG  0.0f
 
 // Print a one-line note when acceleration passes this without being large
 // enough to start confirmation, at most once per FALL_NEARMISS_LOG_MS.

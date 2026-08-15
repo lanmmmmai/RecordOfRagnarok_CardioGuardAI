@@ -48,13 +48,15 @@ import sys
 LSB_PER_G = 4096.0
 FREEFALL_G = 0.4
 IMPACT_G = 2.5
-IMPACT_STANDALONE_G = 3.2
+IMPACT_STANDALONE_G = 3.5
 IMPACT_WINDOW_MS = 1500
 CONFIRM_WINDOW_MS = 3000
 SETTLE_MS = 400
 STILLNESS_MAX_DEV_G = 0.35
-STILLNESS_MIN_CALM_RATIO = 0.70
-ORIENTATION_MIN_DEG = 30.0
+STILLNESS_MIN_CALM_RATIO = 0.50
+# 0 disables the orientation test, matching the firmware's special case. The
+# angle is still computed and reported so the evidence keeps accumulating.
+ORIENTATION_MIN_DEG = 0.0
 NEARMISS_G = 1.8
 
 # Gravity low-pass coefficient, matching fall_detector.cpp.
@@ -349,7 +351,10 @@ def replay(samples, start, trigger, end):
         if pmag > 0.1 and nmag > 0.1:
             dot = (pre[0] * post_gx + pre[1] * post_gy + pre[2] * post_gz)
             tilt = math.degrees(math.acos(max(-1.0, min(1.0, dot / (pmag * nmag)))))
-    reoriented = tilt > ORIENTATION_MIN_DEG
+    # Mirrors fall_detector.cpp: 0 disables the test rather than lowering it to
+    # "any tilt at all", so an event whose gravity vector did not move is not
+    # rejected by a check that is supposed to be off.
+    reoriented = True if ORIENTATION_MIN_DEG <= 0.0 else tilt > ORIENTATION_MIN_DEG
 
     result.update(
         calm_ratio=ratio, calm_n=calm_n, still_n=still_n,

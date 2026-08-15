@@ -239,7 +239,15 @@ void updateFallDetector() {
             float dot = (preFallX * gravX + preFallY * gravY + preFallZ * gravZ) / (preMag * nowMag);
             angleDeg = acosf(constrain(dot, -1.0f, 1.0f)) * 57.2957795f;
         }
-        bool reoriented = angleDeg > FALL_ORIENTATION_MIN_DEG;
+        // Setting the threshold to 0 disables the test rather than lowering it
+        // to "any tilt at all". A plain `>` comparison against 0 would still
+        // reject an event whose gravity vector happened not to move, which is
+        // not what a disabled check should do -- and the angle is still
+        // computed and logged either way, so the evidence keeps accumulating
+        // for whenever there is enough of it to turn the test back on.
+        bool reoriented = (FALL_ORIENTATION_MIN_DEG <= 0.0f)
+                              ? true
+                              : (angleDeg > FALL_ORIENTATION_MIN_DEG);
 
         // One line carrying every number the decision rested on, next to the
         // threshold it was compared against. This is what you calibrate the
