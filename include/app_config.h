@@ -135,60 +135,15 @@
 #define PPG_PEAK_DECAY           0.998f
 
 // Fraction of the tracked peak a candidate must exceed to count as a beat.
-//
-// Textbook figures put the dicrotic wave at 30-50% of systolic amplitude, and
-// 0.35 was chosen from that. It did not hold on this wrist: the 00:00 log shows
-// the dicrotic wave being accepted as a beat throughout. Raised to 0.55, above
-// the quoted band, because the textbook range describes a fingertip trace and
-// the wave is relatively taller at the wrist where the pulse is weaker.
-//
-// This number is a starting point, not a measurement. Nothing in the log says
-// what the dicrotic amplitude actually is on this device -- the log records
-// when beats fired, not the waveform they fired on. PPG_LOG_WAVEFORM below
-// exists to supply that missing evidence.
-#define PPG_PEAK_THRESHOLD_RATIO 0.55f
-
-// How much of a newly accepted peak is folded into the tracked reference.
-//
-// The detector used to do `g_peakAc = g_prevAc` -- assigning the reference to
-// whatever peak was just accepted. That is a positive feedback loop: accept one
-// dicrotic wave by mistake and the reference drops to the dicrotic wave's own
-// amplitude, the threshold drops with it, and from then on EVERY dicrotic wave
-// clears the threshold. The detector latches into double-counting and cannot
-// climb back out, because the only thing that could raise the reference again
-// is a peak it is no longer measuring against.
-//
-// The session logged 2026-08-13 00:00-00:01 is that failure: 46 of 75 intervals
-// landed in 50-57 samples (mean 52.6) while 9 landed in 85-110 (mean 95.3).
-// 95.3 / 52.6 = 1.81 -- the same beat, counted twice. Merging consecutive pairs
-// from the cleanest stretch gives 113, 116, 116 BPM, agreeing to within 3 BPM,
-// and matching the 85-110 cluster directly. The true rate was ~115-125 BPM and
-// the watch reported 230.
-//
-// Blending instead of assigning means a single bad accept moves the reference
-// by 15%, not 100%, and the next genuine systolic peak pulls it straight back.
-#define PPG_PEAK_ATTACK          0.15f
+// The dicrotic notch runs 30-50% of systolic amplitude on a wrist, so 0.35
+// sits above the notch and below the true peak.
+#define PPG_PEAK_THRESHOLD_RATIO 0.35f
 
 // Lower bound on the tracked peak, so the threshold cannot collapse onto the
 // noise floor when the finger lifts. This is a floor for the ADAPTIVE
 // threshold, not a minimum acceptable beat amplitude -- measured AC bottoms
-// out near 583, and 400 x 0.55 = 220 stays comfortably beneath that.
+// out near 583, and 400 x 0.35 = 140 stays comfortably beneath that.
 #define PPG_PEAK_AC_FLOOR        400.0f
-
-// Dump the filtered PPG waveform, one CSV line per sample, so the beat detector
-// can be tuned against the trace it actually runs on rather than against an
-// assumed one.
-//
-// This is the evidence that was missing for the two failed attempts at this
-// detector. Both reasoned about dicrotic-wave amplitude from textbook figures,
-// because [BEAT] lines record only WHEN a beat fired, never the shape it fired
-// on -- so neither attempt could be checked before it was flashed, and both
-// were wrong in a way the log could not reveal.
-//
-// Format: PPGCSV,<sampleIndex>,<ir>,<dcEst>,<acSignal>,<peakRef>,<threshold>,<beat>
-// At 200 Hz this is ~200 lines/s, far past what 115200 baud carries -- turn it
-// on for a short capture, read it, turn it off again. Never leave it enabled.
-#define PPG_LOG_WAVEFORM         0
 
 // Minimum samples between accepted beats, at 200 Hz.
 //
@@ -237,53 +192,13 @@
 // 10 BPM, which is faster than any physiological change worth showing.
 #define PPG_KALMAN_R             4.0f
 
-// Perfusion index above which the reading is treated as a baseline shift
-// rather than a strong pulse.
-//
-// The pulsatile component rides on the DC baseline, so it is a fraction of it:
-// 0.5-3% at the wrist, and the 69 stable samples in the 2026-08-13 00:00 log
-// span 0.84-3.65% with a median of 1.31%. Anything past 5% is the baseline
-// itself moving -- a finger lifting or landing -- which the old code scored as
-// quality 100 because a bigger ratio looked like a better signal. The log
-// contains 801%, 371% and 312% marked as the best possible quality, at exactly
-// the moments the trace was unusable.
-#define PPG_PERFUSION_MAX_VALID  5.0f
-
-// Perfusion-to-quality multiplier.
-//
-// Derived from those same 69 samples rather than picked: at x40 the median 1.31%
-// scores 52, the 10th percentile scores 41 and the 90th scores 63, so the scale
-// resolves differences across the range it actually sees. The previous x50 put
-// the median at 65 and saturated at the top of the measured spread, which is why
-// the log reads 100 for traces of visibly different quality.
-#define PPG_SQI_SCALE            40.0f
-
 // Signal-quality floor below which no heart rate is displayed at all.
 //
-// Now calibrated against PPG_SQI_SCALE. With that multiplier the 69 stable
-// samples of the 2026-08-13 00:00 session score 34-100, the 10th percentile
-// landing at 41. A floor of 30 sits just below the worst reading taken with a
-// finger genuinely on the sensor, so it rejects the no-contact and
-// baseline-shift cases without blanking legitimately weak traces.
-//
-// This is calibrated for a FINGER. A wrist perfuses more weakly, so the figure
-// will need re-reading from a wrist session before the watch is worn.
-#define PPG_MIN_SQI              30
-
-// Accepted beats required before a reading may raise a threshold alert.
-//
-// The adaptive detector starts each contact with its peak reference at
-// PPG_PEAK_AC_FLOOR (400) while the real amplitude is nearer 2000, so the first
-// beats are judged against a threshold five times too low. In the 2026-08-13
-// 00:00 log this produced a Telegram message 11 seconds after boot -- the
-// sustain timer and the SQI gate both passed, because both were fed a number
-// the detector had not yet earned the right to report.
-//
-// 20 beats is 10-25 seconds depending on rate: long enough for the peak
-// reference to converge, short enough that a genuine event early in a wearing
-// session is still caught. It gates ALERTS only; the display shows the reading
-// throughout, so nothing looks frozen.
-#define PPG_WARMUP_BEATS         20
+// START AT 20, NOT 75. The SQI scale here is `perfusion * 50` -- an
+// uncalibrated ratio, not a meaningful percentage. Setting 75 before the scale
+// has been read off a real wrist would mean the screen never shows a number.
+// Read the actual SQI values from the log in Giai đoạn 3b, then tighten.
+#define PPG_MIN_SQI              20
 
 // ---------------------------------------------------------------------------
 // Physiological threshold alerts

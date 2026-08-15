@@ -155,27 +155,10 @@ static bool detectBeatAdaptive(uint32_t ir) {
         if (g_prevAc > threshold && g_samplesSinceBeat >= PPG_REFRACTORY_SAMPLES) {
             beatDetected = true;
             g_samplesSinceBeat = 0;
-            // Blend, never assign. `g_peakAc = g_prevAc` here was a positive
-            // feedback loop: one dicrotic wave accepted by mistake pulled the
-            // reference down to that wave's amplitude, which pulled the
-            // threshold down with it, which let every subsequent dicrotic wave
-            // through. Nothing could raise the reference again, because the
-            // systolic peaks were no longer the thing being measured against.
-            // The 00:00 log is that loop running: 46 of 75 intervals at ~52
-            // samples where the true period was ~95. See PPG_PEAK_ATTACK.
-            g_peakAc = (1.0f - PPG_PEAK_ATTACK) * g_peakAc
-                     + PPG_PEAK_ATTACK * g_prevAc;
+            g_peakAc = g_prevAc;
         }
         g_rising = false;
     }
-
-#if PPG_LOG_WAVEFORM
-    // One line per sample. Only ever for a short capture -- see the #define.
-    Serial.printf("PPGCSV,%lu,%lu,%.0f,%.1f,%.1f,%.1f,%d\n",
-                  (unsigned long)sampleIndex, (unsigned long)ir,
-                  g_dcEst, acSignal, g_peakAc, threshold, beatDetected ? 1 : 0);
-#endif
-
     g_prevAc = acSignal;
     return beatDetected;
 }
@@ -209,10 +192,6 @@ static void resetMeasurement() {
     g_watchState.hrValid = false;
     g_watchState.spo2Valid = false;
     g_watchState.signalQuality = 0;
-    // The detector's peak reference goes back to the floor above, so the next
-    // few beats are measured against a threshold that has not converged yet.
-    // Alerts have to wait those beats out again -- see PPG_WARMUP_BEATS.
-    g_watchState.beatsSinceContact = 0;
 }
 
 void initMAX30102Service() {
@@ -394,10 +373,6 @@ void updateMAX30102Service() {
                         // family group.
                         pushRRInterval(deltaMs);
 
-                        if (g_watchState.beatsSinceContact < 0xFFFF) {
-                            g_watchState.beatsSinceContact++;
-                        }
-
                         rates[rateIndex] = (uint8_t)bpm;
                         rateIndex = (rateIndex + 1) % RATE_SIZE;
 
@@ -495,32 +470,18 @@ void updateMAX30102Service() {
         lastQualityCalc = millis();
         if (g_watchState.skinContact && irMax > irMin && irMin != 0xFFFFFFFF) {
             float ac = (float)(irMax - irMin);
-            // Against the MEAN, not the minimum. Using irMin made the ratio
-            // explode whenever the finger shifted: irMin collapses to the
-            // no-contact level while irMax still holds the last good sample, so
-            // the 00:00 log reports perfusion of 801%, 371% and 312% -- figures
-            // that cannot exist, since the pulsatile component is by definition
-            // a fraction of the baseline it rides on.
-            float dc = (float)(irMax + irMin) * 0.5f;
+            float dc = (float)irMin;
             float perfusion = (dc > 0.0f) ? (ac / dc) * 100.0f : 0.0f;
-
-            // A perfusion index above this is not a strong pulse, it is the
-            // baseline having moved -- the finger lifting, landing, or sliding.
-            // Scoring that as quality 100 inverted the meaning of the number:
-            // the log shows SQI reading its best exactly when the signal was at
-            // its worst, which is precisely when a reading must be suppressed.
-            if (perfusion > PPG_PERFUSION_MAX_VALID) {
-                g_watchState.signalQuality = 0;
-                Serial.printf(" [SQI] perfusion=%.3f%% -> REJECTED (baseline shift,"
-                              " AC=%lu DC=%.0f)\n", perfusion,
-                              (unsigned long)(irMax - irMin), dc);
-            } else {
-                g_watchState.signalQuality =
-                    (uint8_t)constrain((int)(perfusion * PPG_SQI_SCALE), 0, 100);
-                Serial.printf(" [SQI] perfusion=%.3f%% -> scaled=%u (AC=%lu DC=%.0f)\n",
-                              perfusion, g_watchState.signalQuality,
-                              (unsigned long)(irMax - irMin), dc);
-            }
+            g_watchState.signalQuality = (uint8_t)constrain((int)(perfusion * 50.0f), 0, 100);
+            // The scaled figure saturates: a finger on the sensor reads 100 for
+            // anything from a mediocre trace to a perfect one, so the number
+            // cannot be used to pick PPG_MIN_SQI. Print the raw perfusion index
+            // alongside it -- that one has a physiological range (roughly
+            // 0.5-2% at the wrist) and is what the multiplier above should be
+            // derived from once a real session has been logged.
+            Serial.printf(" [SQI] perfusion=%.3f%% -> scaled=%u (AC=%lu DC=%lu)\n",
+                          perfusion, g_watchState.signalQuality,
+                          (unsigned long)(irMax - irMin), (unsigned long)irMin);
         } else {
             g_watchState.signalQuality = 0;
         }

@@ -61,12 +61,6 @@ struct WatchState {
     bool spo2Valid;
     uint8_t signalQuality;  // 0-100, AC amplitude relative to DC baseline
     bool motionArtifact;    // IMU says the arm is moving too much to trust PPG
-    // Beats accepted since skin contact began. The adaptive detector starts
-    // with its peak reference at the floor and needs several beats to converge
-    // on the real amplitude, so early readings are not yet trustworthy -- the
-    // 2026-08-13 00:00 log sent a Telegram alert 11 seconds after boot, off a
-    // detector that had not settled. Alerts wait for PPG_WARMUP_BEATS.
-    uint16_t beatsSinceContact;
     uint32_t redRaw;
     uint32_t irRaw;
     uint16_t heartRateHistory[30]; // 30-sample trend chart buffer
@@ -128,7 +122,6 @@ struct WatchState {
         spo2Valid = false;
         signalQuality = 0;
         motionArtifact = false;
-        beatsSinceContact = 0;
         redRaw = 0; irRaw = 0;
         memset(heartRateHistory, 0, sizeof(heartRateHistory));
         historyIndex = 0;
