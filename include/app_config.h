@@ -298,7 +298,7 @@
 //   millis, accX, accY, accZ, gyroX, gyroY, gyroZ, totalG, fallState
 // Currently ON: a data-collection session is in progress. Set back to 0 once
 // the fall recordings are done.
-#define FALL_LOG_RAW_SAMPLES      1
+#define FALL_LOG_RAW_SAMPLES      0
 
 // Temporary instrumentation for the tick budget. Prints a TICKPROF line every
 // 2 s giving the worst single duration each job in loop() has cost since the
@@ -315,7 +315,7 @@
 //
 // Set back to 0 once the answer is in. The timing calls are cheap but the
 // report is a blocking serial write, so it competes with what it measures.
-#define FALL_LOG_TICK_PROFILE     1
+#define FALL_LOG_TICK_PROFILE     0
 
 // ---------------------------------------------------------------------------
 // Alerting
