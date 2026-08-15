@@ -56,5 +56,7 @@ void renderQuickMenuScreen(TFT_eSprite& spr) {
     spr.fillCircle(182, 156, 4, g_watchState.touchOk ? UI_COLOR_NORMAL : UI_COLOR_CRITICAL);
 
     spr.drawString("CardioGuard AI v1.0", SCREEN_CENTER_X, 184, 1);
+    // Swipe left from here now wraps to home too, but the footer names the one
+    // gesture that has always worked from this screen rather than listing both.
     spr.drawString("Vuốt xuống để về", SCREEN_CENTER_X, 208, 1);
 }

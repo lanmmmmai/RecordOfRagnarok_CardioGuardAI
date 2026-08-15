@@ -25,7 +25,12 @@ void renderFallMonitorScreen(TFT_eSprite& spr) {
     vnFont(spr, VN_SMALL);
     spr.setTextColor(UI_COLOR_SECONDARY, UI_COLOR_BLACK);
     if (active) {
-        spr.drawString("IMU 50Hz - lọc 4 bước", SCREEN_CENTER_X, 142, 1);
+        // 235 Hz, not 50: QMI_SAMPLE_GAP_US is 4300 us and the IMU is polled
+        // every pass of loop(), so this is the rate the detector actually sees.
+        // The old "50Hz" was off by a factor of nearly five and would have sent
+        // anyone reading it here looking for a sample-rate bug that is not
+        // there.
+        spr.drawString("IMU 235Hz - lọc 4 bước", SCREEN_CENTER_X, 142, 1);
     } else {
         spr.drawString("QMI8658 không phản hồi", SCREEN_CENTER_X, 142, 1);
     }

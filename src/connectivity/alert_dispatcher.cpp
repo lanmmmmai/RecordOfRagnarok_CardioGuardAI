@@ -265,7 +265,6 @@ void updateAlertDispatcher() {
             g_watchState.fallState = FALL_STATE_NORMAL;
             g_watchState.countdownSec = 15;
             g_watchState.currentScreen = SCREEN_HOME;
-            g_watchState.screenNeedsFullRedraw = true;
             // Anything still queued stays queued. The worker keeps retrying it
             // in the background; clearing the screen is not the same as
             // abandoning the message.

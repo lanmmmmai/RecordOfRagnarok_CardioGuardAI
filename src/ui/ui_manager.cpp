@@ -46,20 +46,52 @@ void handleUITouchInput(int touchX, int touchY, uint8_t gestureID) {
                   (int)screen, gestureID, touchX, touchY);
 
     // 1. Gesture Navigation
-    if (gestureID == 0x03) { // SWIPE LEFT
-        if (screen == SCREEN_HOME) g_watchState.currentScreen = SCREEN_HEART_RATE;
-        else if (screen == SCREEN_HEART_RATE) g_watchState.currentScreen = SCREEN_SPO2;
-        else if (screen == SCREEN_SPO2) g_watchState.currentScreen = SCREEN_FALL_MONITOR;
+    //
+    // Every screen except the fall alert sits on one horizontal carousel, in
+    // this order, and it wraps at both ends:
+    //
+    //   HOME -> HEART_RATE -> SPO2 -> FALL_MONITOR -> NOTIFICATION
+    //        -> QUICK_MENU -> back to HOME
+    //
+    // Notifications and the quick menu used to be reachable only by swiping up
+    // or down *from home*. On a 240 px round face an older wearer's swipe lands
+    // diagonally as often as not, so two of the seven screens were effectively
+    // behind a gesture that half the time did nothing at all. Putting them on
+    // the same carousel means one repeated gesture reaches everything: swipe
+    // left enough times and you arrive, whichever screen you started on.
+    //
+    // The vertical gestures are kept as the shortcuts they always were, so
+    // nobody who learned them has to relearn anything.
+    static const UIScreen carousel[] = {
+        SCREEN_HOME, SCREEN_HEART_RATE, SCREEN_SPO2, SCREEN_FALL_MONITOR,
+        SCREEN_NOTIFICATION, SCREEN_QUICK_MENU,
+    };
+    const int carouselLen = sizeof(carousel) / sizeof(carousel[0]);
+
+    // -1 when the current screen is not on the carousel, which today means the
+    // fall alert. That screen is excluded on purpose: it is the one screen the
+    // wearer must not be able to swipe away from during a countdown.
+    int pos = -1;
+    for (int i = 0; i < carouselLen; i++) {
+        if (carousel[i] == screen) { pos = i; break; }
     }
-    else if (gestureID == 0x04) { // SWIPE RIGHT (Back to HOME)
-        if (screen != SCREEN_HOME && screen != SCREEN_FALL_ALERT) {
-            g_watchState.currentScreen = SCREEN_HOME;
-        }
+
+    if (gestureID == 0x03) { // SWIPE LEFT -- forward, wrapping
+        if (pos >= 0) g_watchState.currentScreen = carousel[(pos + 1) % carouselLen];
     }
-    else if (gestureID == 0x01) { // SWIPE UP (Quick Menu)
+    else if (gestureID == 0x04) { // SWIPE RIGHT -- back one step, wrapping
+        // Steps back rather than jumping straight home. Swiping right used to
+        // mean "home" from anywhere, which made the carousel a one-way street:
+        // overshoot by one and the only way back was all the way around. Home
+        // is still at most a few swipes away in either direction, and the
+        // gesture is now the mirror image of swipe-left, which is what a
+        // sideways swipe leads someone to expect.
+        if (pos >= 0) g_watchState.currentScreen = carousel[(pos + carouselLen - 1) % carouselLen];
+    }
+    else if (gestureID == 0x01) { // SWIPE UP (Quick Menu shortcut)
         if (screen == SCREEN_HOME) g_watchState.currentScreen = SCREEN_QUICK_MENU;
     }
-    else if (gestureID == 0x02) { // SWIPE DOWN (Notifications)
+    else if (gestureID == 0x02) { // SWIPE DOWN (Notifications shortcut)
         if (screen == SCREEN_HOME) g_watchState.currentScreen = SCREEN_NOTIFICATION;
         else if (screen == SCREEN_QUICK_MENU) g_watchState.currentScreen = SCREEN_HOME;
     }
@@ -112,8 +144,6 @@ void handleUITouchInput(int touchX, int touchY, uint8_t gestureID) {
             g_watchState.currentScreen = SCREEN_HOME;
         }
     }
-
-    g_watchState.screenNeedsFullRedraw = true;
 }
 
 // Minimal direct-to-LCD rendering used when the sprite could not be allocated.

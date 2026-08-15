@@ -81,10 +81,20 @@ struct WatchState {
     uint8_t gestureID;
     String gestureName;
 
-    // Active UI Screen
+    // Active UI Screen.
+    //
+    // There is no previousScreen and no screenNeedsFullRedraw here any more.
+    // Both were written and never read: renderUI() redraws the whole sprite
+    // every frame with fillSprite(), so a "needs redraw" flag could not change
+    // anything, and nothing ever asked where the wearer came from.
+    //
+    // The flag looked like the start of dirty-rectangle rendering, which is
+    // still the right way to cut the 31 ms frame -- but a single global bool
+    // cannot express it. Dirty rectangles need to know *which region* changed,
+    // not merely that something did, so that work starts from a rectangle list
+    // rather than from this. Leaving the flag in place made the optimisation
+    // look half-done when none of it existed.
     UIScreen currentScreen;
-    UIScreen previousScreen;
-    bool screenNeedsFullRedraw;
 
     // Notifications
     bool notificationPending;
@@ -138,8 +148,6 @@ struct WatchState {
         gestureName = "NONE";
 
         currentScreen = SCREEN_HOME;
-        previousScreen = SCREEN_HOME;
-        screenNeedsFullRedraw = true;
 
         notificationPending = false;
         lastNotificationMsg = "Hệ thống sẵn sàng";
