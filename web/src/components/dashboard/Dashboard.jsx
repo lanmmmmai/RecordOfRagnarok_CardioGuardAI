@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react';
 import DashboardHeader from './DashboardHeader';
 import VitalCard from './VitalCard';
 import RealtimeDeviceBridge from './RealtimeDeviceBridge';
-import RealtimeECGChart from './RealtimeECGChart';
-import TrendChart from './TrendChart';
 import IMUMotionChart from './IMUMotionChart';
 import FallLogsTable from './FallLogsTable';
 import EmergencyConfig from './EmergencyConfig';
@@ -132,18 +130,7 @@ export default function Dashboard({
         />
       </ScrollReveal>
 
-      {/* 4. Live ECG Waveform Oscilloscope & Trends */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <ScrollReveal delay={200} className="lg:col-span-6">
-          <RealtimeECGChart
-            isConnected={connectionState.connected}
-            rawTelemetry={rawTelemetry}
-          />
-        </ScrollReveal>
-        <ScrollReveal delay={250} className="lg:col-span-6">
-          <TrendChart isConnected={connectionState.connected} rawTelemetry={rawTelemetry} />
-        </ScrollReveal>
-      </div>
+
 
       {/* 5. Streamlined Tab Bar */}
       <ScrollReveal delay={100}>
