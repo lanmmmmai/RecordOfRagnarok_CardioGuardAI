@@ -298,21 +298,11 @@ void updateMAX30102Service() {
         if (!g_watchState.motionArtifact && detectBeatAdaptive(ir, red)) {
             unsigned long now = millis();
             if (lastBeatSample == 0) {
-                // Beat 1: Record initial anchor timestamp and compute real optical SpO2, do NOT fake 74 BPM
+                // Beat 1: Record initial anchor timestamp. SpO2 requires at least 2 validated pulse cycles
+                // to extract true systolic/diastolic optical peaks and avoid touch-pressure artifacts.
                 lastBeatSample = sampleIndex;
                 g_watchState.signalQuality = 90;
-                if (g_dcEstRed > 0.0f && g_dcEstIr > 0.0f) {
-                    float acRed = fabsf((float)red - g_dcEstRed);
-                    float acIr = fabsf((float)ir - g_dcEstIr);
-                    if (acIr > 5.0f && acRed > 5.0f) {
-                        float rRatio = (acRed / g_dcEstRed) / (acIr / g_dcEstIr);
-                        float instantSpo2 = 104.0f - 17.0f * rRatio;
-                        if (instantSpo2 > 100.0f) instantSpo2 = 100.0f;
-                        if (instantSpo2 < 70.0f) instantSpo2 = 70.0f;
-                        g_watchState.spo2Percent = (uint8_t)(instantSpo2 + 0.5f);
-                        g_watchState.spo2Valid = true;
-                    }
-                }
+                g_watchState.spo2Valid = false;
             } else {
                 // Beat 2+: Compute TRUE Heart Rate from exact sample delta (no double counting)
                 uint32_t deltaSamples = sampleIndex - lastBeatSample;
