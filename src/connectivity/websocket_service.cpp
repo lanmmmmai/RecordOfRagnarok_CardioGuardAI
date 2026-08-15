@@ -50,9 +50,11 @@ void updateWebSocketService() {
 
     webSocket.loop();
 
-    // Broadcast comprehensive telemetry JSON at 10 Hz (every 100ms) or immediately on touch event
-    bool forceSend = g_watchState.touched;
-    if (forceSend || (millis() - lastBroadcast >= 100)) {
+    // Adaptive Transmission: Stream at 10Hz (100ms) ONLY when wearing watch (skin contact active) or on touch/alert
+    // When NOT worn on wrist, transmit idle keep-alive only once every 1000ms
+    unsigned long streamInterval = (g_watchState.skinContact || g_watchState.fallState > 0 || g_watchState.touched) ? 100 : 1000;
+    bool forceSend = g_watchState.touched || (g_watchState.fallState > 0);
+    if (forceSend || (millis() - lastBroadcast >= streamInterval)) {
         lastBroadcast = millis();
 
         if (webSocket.connectedClients() > 0) {
