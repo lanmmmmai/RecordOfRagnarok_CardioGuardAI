@@ -30,7 +30,7 @@ export default function App() {
   const [isSimulating, setIsSimulating] = useState(false);
   const [isSOSOpen, setIsSOSOpen] = useState(false);
   const [isReportOpen, setIsReportOpen] = useState(false);
-  const [eventLogs, setEventLogs] = useState(initialEventLogs);
+  const [eventLogs, setEventLogs] = useState([]);
 
   // Dynamic Live Simulation Effect
   useEffect(() => {

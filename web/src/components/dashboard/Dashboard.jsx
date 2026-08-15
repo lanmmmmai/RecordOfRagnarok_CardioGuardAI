@@ -141,7 +141,7 @@ export default function Dashboard({
           />
         </ScrollReveal>
         <ScrollReveal delay={250} className="lg:col-span-6">
-          <TrendChart mock24hData={mock24hData} mock7DaysTrend={mock7DaysTrend} />
+          <TrendChart isConnected={connectionState.connected} rawTelemetry={rawTelemetry} />
         </ScrollReveal>
       </div>
 
