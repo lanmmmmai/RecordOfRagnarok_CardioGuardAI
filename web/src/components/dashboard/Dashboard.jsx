@@ -17,36 +17,28 @@ import { Database, Compass, History } from 'lucide-react';
 
 export default function Dashboard({
   userProfile,
-  vitalSummary,
-  simulatedBpm,
-  isSimulating,
-  setIsSimulating,
-  onTriggerSOS,
-  eventLogs,
   mock24hData,
   mock7DaysTrend,
+  eventLogs,
+  onTriggerSOS,
   onExportReport
 }) {
   const [isClinicalReportOpen, setIsClinicalReportOpen] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState('COLLECTOR');
-  const [liveBpm, setLiveBpm] = useState(simulatedBpm);
   const [rawTelemetry, setRawTelemetry] = useState(null);
 
   const [connectionState, setConnectionState] = useState({
     connected: false,
     mode: 'DISCONNECTED',
     deviceName: 'Chưa kết nối thiết bị',
-    signal: -54,
-    battery: 92
+    signal: 0,
+    battery: 0
   });
 
   useEffect(() => {
     const unsubTelemetry = websocketBridgeService.onTelemetry((data) => {
       if (data) {
         setRawTelemetry(data);
-        if (data.pulse !== undefined) {
-          setLiveBpm(data.pulse);
-        }
       }
     });
 
@@ -60,8 +52,6 @@ export default function Dashboard({
     };
   }, [onTriggerSOS]);
 
-  const activeBpm = connectionState.connected ? liveBpm : simulatedBpm;
-
   const handleOpenReport = () => {
     setIsClinicalReportOpen(true);
     if (onExportReport) onExportReport();
@@ -74,9 +64,8 @@ export default function Dashboard({
       <ScrollReveal delay={0}>
         <DashboardHeader
           userProfile={userProfile}
-          simulatedBpm={activeBpm}
-          isSimulating={isSimulating}
-          setIsSimulating={setIsSimulating}
+          isConnected={connectionState.connected}
+          rawTelemetry={rawTelemetry}
           onTriggerSOS={onTriggerSOS}
           onExportReport={handleOpenReport}
         />
@@ -85,8 +74,6 @@ export default function Dashboard({
       {/* 2. Core Vitals Grid */}
       <ScrollReveal delay={100}>
         <VitalCard
-          vitalSummary={vitalSummary}
-          simulatedBpm={activeBpm}
           isConnected={connectionState.connected}
           rawTelemetry={rawTelemetry}
         />
@@ -100,12 +87,10 @@ export default function Dashboard({
         />
       </ScrollReveal>
 
-      {/* 4. Live ECG Waveform Oscilloscope & 24h/7d Trends (2 Columns) */}
+      {/* 4. Live ECG Waveform Oscilloscope & Trends */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <ScrollReveal delay={200} className="lg:col-span-6">
           <RealtimeECGChart
-            simulatedBpm={activeBpm}
-            isSimulating={isSimulating}
             isConnected={connectionState.connected}
             rawTelemetry={rawTelemetry}
           />
@@ -115,7 +100,7 @@ export default function Dashboard({
         </ScrollReveal>
       </div>
 
-      {/* 5. Streamlined Tab Bar for Detail Features */}
+      {/* 5. Streamlined Tab Bar */}
       <ScrollReveal delay={100}>
         <div className="glass-panel p-2 rounded-2xl border border-slate-800 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center space-x-2">
@@ -167,10 +152,10 @@ export default function Dashboard({
         {activeSubTab === 'COLLECTOR' && (
           <>
             <ScrollReveal delay={100}>
-              <DataCollectorModule simulatedBpm={activeBpm} />
+              <DataCollectorModule simulatedBpm={rawTelemetry?.pulse || 0} />
             </ScrollReveal>
             <ScrollReveal delay={150}>
-              <TelegramLiveLogsModule userProfile={userProfile} simulatedBpm={activeBpm} onLogEvent={eventLogs} />
+              <TelegramLiveLogsModule userProfile={userProfile} simulatedBpm={rawTelemetry?.pulse || 0} onLogEvent={eventLogs} />
             </ScrollReveal>
           </>
         )}

@@ -2,25 +2,28 @@ import React from 'react';
 import { Heart, Activity, ShieldCheck, TrendingUp } from 'lucide-react';
 import ScrollReveal from '../ScrollReveal';
 
-export default function VitalCard({ vitalSummary, simulatedBpm, isConnected, rawTelemetry }) {
-  // Strict Real Data Mode: If connected to Watch via WebSocket
+export default function VitalCard({ isConnected, rawTelemetry }) {
+  // Strict Zero-Default Mode: If not received or no skin contact => Exactly 0 (Zero invention)
   const pulseVal = isConnected
-    ? (rawTelemetry?.skinContact && rawTelemetry?.pulse > 0 ? rawTelemetry.pulse : "--")
-    : (simulatedBpm || "--");
+    ? (rawTelemetry?.skinContact && rawTelemetry?.pulse > 0 ? rawTelemetry.pulse : 0)
+    : 0;
 
   const pulseStatus = isConnected
     ? (!rawTelemetry?.skinContact || rawTelemetry?.pulse === 0
-        ? "CHƯA ĐEO DA"
-        : rawTelemetry.pulse > 100 ? "NHỊP NHANH" : rawTelemetry.pulse < 55 ? "NHỊP CHẬM" : "BÌNH THƯỜNG (THỰC)")
-    : (simulatedBpm > 100 ? "NHỊP NHANH" : simulatedBpm < 55 ? "NHỊP CHẬM" : "BÌNH THƯỜNG");
+        ? "CHƯA ĐEO DA (0 BPM)"
+        : rawTelemetry.pulse > 100 ? "NHỊP NHANH" : rawTelemetry.pulse < 55 ? "NHỊP CHẬM" : "BÌNH THƯỜNG")
+    : "CHƯA KẾT NỐI (0 BPM)";
 
   const spo2Val = isConnected
-    ? (rawTelemetry?.spo2Valid && rawTelemetry?.spo2 > 0 ? `${rawTelemetry.spo2}%` : "--")
-    : `${vitalSummary.spO2}%`;
+    ? (rawTelemetry?.spo2Valid && rawTelemetry?.spo2 > 0 ? `${rawTelemetry.spo2}%` : "0%")
+    : "0%";
 
   const spo2Status = isConnected
-    ? (!rawTelemetry?.spo2Valid || rawTelemetry?.spo2 === 0 ? "CHỜ TÍCH LŨY" : "AN TOÀN (THỰC)")
-    : "AN TOÀN";
+    ? (!rawTelemetry?.spo2Valid || rawTelemetry?.spo2 === 0 ? "CHƯA CÓ TÍN HIỆU" : "AN TOÀN")
+    : "CHƯA KẾT NỐI";
+
+  const batteryVal = isConnected ? `${rawTelemetry?.battery || 0}%` : "0%";
+  const voltageVal = isConnected && rawTelemetry?.voltage ? `${rawTelemetry.voltage.toFixed(2)}V` : "0.00V";
 
   const cards = [
     {
@@ -28,8 +31,8 @@ export default function VitalCard({ vitalSummary, simulatedBpm, isConnected, raw
       value: `${pulseVal}`,
       unit: "BPM",
       status: pulseStatus,
-      statusColor: pulseVal === "--" ? "text-slate-400 border-slate-700 bg-slate-800/40" : (rawTelemetry?.pulse > 100 || simulatedBpm > 100 ? "text-rose-400 border-rose-500/40 bg-rose-500/15" : "text-emerald-400 border-emerald-500/40 bg-emerald-500/15"),
-      subInfo: isConnected ? `Chất lượng SQI: ${rawTelemetry?.quality || 0}%` : `Min: ${vitalSummary.minBpm24h} | Max: ${vitalSummary.maxBpm24h}`,
+      statusColor: pulseVal === 0 ? "text-slate-400 border-slate-700 bg-slate-800/40" : (pulseVal > 100 ? "text-rose-400 border-rose-500/40 bg-rose-500/15" : "text-emerald-400 border-emerald-500/40 bg-emerald-500/15"),
+      subInfo: `Chất lượng SQI: ${rawTelemetry?.quality || 0}%`,
       icon: Heart,
       badgeBorder: "border-rose-500/30 hover:border-rose-400/60 shadow-rose-500/5",
       iconColor: "text-rose-400 bg-rose-500/10"
@@ -39,30 +42,30 @@ export default function VitalCard({ vitalSummary, simulatedBpm, isConnected, raw
       value: spo2Val,
       unit: "SpO2",
       status: spo2Status,
-      statusColor: spo2Val === "--" ? "text-slate-400 border-slate-700 bg-slate-800/40" : "text-cyan-400 border-cyan-500/40 bg-cyan-500/15",
-      subInfo: isConnected ? (rawTelemetry?.motionArtifact ? "Cảnh báo: Tay đang rung nhẹ" : "Lọc nhiễu DSP 5 tầng THỰC") : "Lọc nhiễu DSP 5 Tầng",
+      statusColor: spo2Val === "0%" ? "text-slate-400 border-slate-700 bg-slate-800/40" : "text-cyan-400 border-cyan-500/40 bg-cyan-500/15",
+      subInfo: isConnected ? (rawTelemetry?.motionArtifact ? "Cảnh báo: Tay đang cử động" : "Lọc nhiễu DSP 5 tầng") : "Chưa có dữ liệu",
       icon: Activity,
       badgeBorder: "border-cyan-500/30 hover:border-cyan-400/60 shadow-cyan-500/5",
       iconColor: "text-cyan-400 bg-cyan-500/10"
     },
     {
       title: "CẢM BIẾN & ĐIỆN ÁP PIN",
-      value: isConnected ? `${rawTelemetry?.battery || 100}%` : `${vitalSummary.hrv}`,
-      unit: isConnected ? `${rawTelemetry?.voltage ? rawTelemetry.voltage.toFixed(2) + 'V' : 'Pin'}` : "ms",
-      status: isConnected ? (rawTelemetry?.charging ? "ĐANG SẠC PIN" : "PIN KHỎE") : "TỐT",
-      statusColor: "text-emerald-400 border-emerald-500/40 bg-emerald-500/15",
-      subInfo: isConnected ? `Hardware IMU/PPG: ${rawTelemetry?.sensors?.imuOk ? 'OK' : 'ERR'}` : "Khoảng R-R Đạt chuẩn",
+      value: batteryVal,
+      unit: voltageVal,
+      status: isConnected ? (rawTelemetry?.charging ? "ĐANG SẠC PIN" : "PIN HOẠT ĐỘNG") : "CHƯA KẾT NỐI",
+      statusColor: isConnected ? "text-emerald-400 border-emerald-500/40 bg-emerald-500/15" : "text-slate-400 border-slate-700 bg-slate-800/40",
+      subInfo: `Hardware IMU/PPG: ${isConnected && rawTelemetry?.sensors?.imuOk ? 'OK' : '0'}`,
       icon: TrendingUp,
       badgeBorder: "border-emerald-500/30 hover:border-emerald-400/60 shadow-emerald-500/5",
       iconColor: "text-emerald-400 bg-emerald-500/10"
     },
     {
       title: "TINYML AI FALL RISK (QMI8658)",
-      value: isConnected ? (rawTelemetry?.fallState === 0 ? "0/100" : "85/100") : `${vitalSummary.fallRiskScore}/100`,
+      value: `${isConnected ? (rawTelemetry?.fallState || 0) : 0}/100`,
       unit: "Risk Score",
-      status: isConnected ? (rawTelemetry?.fallState === 0 ? "AN TOÀN (BÌNH THƯỜNG)" : "CẢNH BÁO TÉ NGÃ!") : "NGUY CƠ THẤP",
-      statusColor: isConnected && rawTelemetry?.fallState > 0 ? "text-rose-400 border-rose-500/50 bg-rose-500/20" : "text-amber-300 border-amber-400/40 bg-amber-400/15",
-      subInfo: isConnected ? `FPS Stream: 10Hz | RSSI: ${rawTelemetry?.rssi || 0}dBm` : "Suy luận INT8: 3.1ms",
+      status: isConnected ? (rawTelemetry?.fallState === 0 ? "AN TOÀN" : "CẢNH BÁO TÉ NGÃ!") : "CHƯA KẾT NỐI",
+      statusColor: isConnected && rawTelemetry?.fallState > 0 ? "text-rose-400 border-rose-500/50 bg-rose-500/20" : "text-slate-400 border-slate-700 bg-slate-800/40",
+      subInfo: `FPS Stream: ${isConnected ? '10Hz' : '0Hz'} | RSSI: ${rawTelemetry?.rssi || 0}dBm`,
       icon: ShieldCheck,
       badgeBorder: "border-amber-400/30 hover:border-amber-300/60 shadow-amber-400/5",
       iconColor: "text-amber-300 bg-amber-400/10"
