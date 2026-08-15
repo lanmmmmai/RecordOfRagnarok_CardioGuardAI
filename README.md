@@ -205,7 +205,7 @@ cảm ứng mỗi vòng · cảm biến 20 ms · vẽ 33 ms (~30 FPS) · pin + W
 |---|---|
 | ~~0–3~~ | ~~Xử lý bí mật rò rỉ · đưa code vào repo · sửa lỗi té ngã · viết lại tài liệu~~ ✅ |
 | **3b** | Hiệu chuẩn ngưỡng té ngã bằng thử nghiệm thật (thả xuống đệm, đọc dòng quyết định trong log) |
-| **5** | DSP tầng 4+5 · nâng PPG lên 200 Hz để đo được khoảng RR |
+| **5** | Van thoát tầng 4 · DSP tầng 5 (Kalman + SQI) · nâng PPG lên 200 Hz để đo được khoảng RR |
 | **6** | Nút SOS vật lý · cảnh báo pin yếu · cảnh báo ngưỡng sinh lý |
 | **7** | TinyML: cây quyết định té ngã (UMAFall/FallAllD + dữ liệu tự thu) · sàng lọc khoảng RR (MIT-BIH afdb) |
 | **8** | Đánh giá: ma trận nhầm lẫn, độ nhạy/đặc hiệu, ROC, so sánh với baseline 4 pha |

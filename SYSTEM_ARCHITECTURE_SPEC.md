@@ -88,7 +88,7 @@ Mọi giá trị dưới đây khớp `#define` trong [include/app_config.h](inc
 
 ### Ràng buộc nguồn điện
 
-Bo mạch dùng ổn áp **ME6217C33M5G**, dòng ra khoảng **800 mA**. Đây là **trần ngân sách dòng** cho mọi module gắn thêm: LCD + backlight + Wi-Fi burst + BLE đã chiếm phần lớn, nên MAX30102 (LED drive `0x5F` ≈ 25 mA khi cả 2 LED sáng) là gần hết dư địa an toàn. Thêm module mới phải tính lại.
+Bo mạch dùng ổn áp **ME6217C33M5G**, dòng ra khoảng **800 mA**. Đây là **trần ngân sách dòng** cho mọi module gắn thêm: LCD + backlight + Wi-Fi burst + BLE đã chiếm phần lớn, nên MAX30102 (LED drive `0x30` ≈ 12 mA khi cả 2 LED sáng) chiếm một phần dư địa. Thêm module mới phải tính lại.
 
 ### Chân mở rộng SH1.0 còn trống
 
@@ -117,7 +117,7 @@ SparkFun chặn tới 250 ms) sẽ làm đứng hình cả giao diện lẫn b�
 
 ## 3. Chuỗi Xử lý Tín hiệu Nhịp tim & SpO2 tại Biên
 
-> **Trạng thái thật: 3 trong 5 tầng đã có. Tầng 4 và 5 CHƯA TRIỂN KHAI.**
+> **Trạng thái thật: tầng 1–3 đã có. Tầng 4 có một nửa. Tầng 5 CHƯA TRIỂN KHAI.**
 > Mục này mô tả đúng những gì [src/sensors/max30102_service.cpp](src/sensors/max30102_service.cpp) đang làm.
 
 ### Tốc độ lấy mẫu thực tế
@@ -146,7 +146,7 @@ Nhưng với phân tích **khoảng RR** thì 40 ms là quá thô — xem §9 v�
          │
          ▼
  2. TẦNG 2: Cổng chặn theo Cử động (Motion Gating)   ✅ CÓ
-    ──> Vòng đệm 16 mẫu độ lớn gia tốc từ QMI8658. Nếu độ lệch chuẩn > 0.06g
+    ──> Vòng đệm 16 mẫu độ lớn gia tốc từ QMI8658. Nếu độ lệch chuẩn > 0.08g
         (`PPG_MOTION_STD_G`) → BỎ QUA hoàn toàn mẫu đó, không dò nhịp, không nhận SpO2.
     ──> ĐÂY KHÔNG PHẢI NLMS adaptive filter. Không có phép trừ nhiễu thích nghi nào;
         chỉ là chặn/không chặn. Đơn giản hơn nhiều, nhưng là lý do quan trọng nhất
@@ -160,10 +160,10 @@ Nhưng với phân tích **khoảng RR** thì 40 ms là quá thô — xem §9 v�
         FFT cần cửa sổ 8–16s, làm nhịp tim phản ứng chậm hẳn.)
          │
          ▼
- 4. TẦNG 4: Loại Số Ảo Đột biến (Median 5 + Rate-of-Change Gate)   ❌ CHƯA TRIỂN KHAI
-    ──> Kế hoạch: trung vị 5 mẫu; khống chế thay đổi ≤ 15 BPM/giây;
-        kèm "van thoát" bắt buộc: 8 lần liên tiếp vượt ngưỡng thì CHẤP NHẬN giá trị mới
-        (thiếu van này, đúng lúc lên cơn nhịp nhanh thiết bị sẽ khoá cứng ở số cũ).
+ 4. TẦNG 4: Loại Số Ảo Đột biến (Median + Rate-of-Change Gate)   ⚠️ CÓ MỘT NỬA
+    ──> ĐÃ CÓ: trung vị thật trên mảng đã sắp xếp (max30102_service.cpp:166-174),
+        và chặn thay đổi > 15 BPM so với giá trị đang hiển thị (dòng 154).
+    ──> 🔴 CÒN THIẾU: "van thoát". Xem cảnh báo ngay dưới đây.
          │
          ▼
  5. TẦNG 5: Làm mịn Kalman 1D + Kiểm định SQI   ❌ CHƯA TRIỂN KHAI
@@ -172,6 +172,36 @@ Nhưng với phân tích **khoảng RR** thì 40 ms là quá thô — xem §9 v�
          ▼
 [Nhịp tim & SpO2 hiển thị Màn hình & Gửi Telegram]
 ```
+
+### 🔴 Tầng 4 thiếu van thoát — nhịp tim có thể khoá cứng vĩnh viễn
+
+```cpp
+// max30102_service.cpp:154
+bool isSpike = g_watchState.hrValid && (fabsf(bpm - g_watchState.heartRateBPM) > 15.0f);
+if (!isSpike) { /* chỉ khi KHÔNG phải spike mới được ghi vào rates[] */ }
+```
+
+Bộ chặn so nhịp mới với `heartRateBPM` — tức là **đầu ra của chính bộ lọc**. Khi giá trị mới
+bị loại, `heartRateBPM` không đổi, nên nhịp kế tiếp lại bị so với đúng con số cũ đó và lại bị loại.
+
+**Vòng lặp không có lối ra:**
+
+```text
+Đang hiển thị 75 BPM  →  nhịp thật tăng lên 95 (gắng sức / lên cơn nhịp nhanh)
+        │
+        ├─ nhịp 1: |95 − 75| = 20 > 15  →  LOẠI   →  heartRateBPM vẫn = 75
+        ├─ nhịp 2: |95 − 75| = 20 > 15  →  LOẠI   →  heartRateBPM vẫn = 75
+        └─ ... mãi mãi, cho tới khi mất tiếp xúc da (hrValid = false)
+```
+
+Màn hình đứng yên ở 75 trong khi tim thật đập 95. Thiết bị **nói dối theo hướng trấn an**,
+đúng vào lúc con số có ý nghĩa nhất. Nghịch lý: bộ lọc sinh ra để chống số ảo, nhưng vì thiếu
+van thoát nó lại che mất đúng sự kiện lâm sàng cần thấy.
+
+**Cách sửa** (Giai đoạn 5, ~5 dòng): đếm số lần bị loại **liên tiếp**; quá 8 lần thì buộc chấp
+nhận giá trị mới và reset bộ đếm. 8 nhịp ở 60–100 BPM là khoảng 5–8 giây — đủ lâu để chặn nhiễu
+xung đơn lẻ, đủ nhanh để không bỏ lỡ một cơn nhịp nhanh thật. Mọi nhịp được chấp nhận (kể cả
+đường bình thường) đều phải reset bộ đếm về 0.
 
 ### Chỉ số Chất lượng Tín hiệu (SQI) — CHƯA HIỆU CHUẨN
 
@@ -189,7 +219,8 @@ Hệ số 50 là số phỏng đoán, **chưa đối chiếu với bất kỳ ph
 
 ### Những thứ code thật có mà đặc tả cũ bỏ sót
 
-- **Ngưỡng tiếp xúc da** `PPG_CONTACT_IR_THRESHOLD = 35000` — đo trên chính thiết bị này: cảm biến để trên bàn hướng ra không khí đã cho ~21,900, nên ngưỡng 8,000 mặc định khiến máy luôn tưởng đang chạm da.
+- **Ngưỡng tiếp xúc da** `PPG_CONTACT_IR_THRESHOLD = 25000`, dòng LED `0x30`, ngưỡng cử động `PPG_MOTION_STD_G = 0.08` — cả ba đã được chỉnh lại qua nhiều đợt thử trên thiết bị thật để chặn số ảo ~166 BPM khi cảm biến hướng ra không khí.
+  > ⚠️ **Bằng chứng hiệu chuẩn cũ không còn áp dụng.** Con số "~21,900 khi để trên bàn" ghi trong [app_config.h](include/app_config.h) được đo ở LED `0x5F`. Dòng LED nay là `0x30` (yếu hơn đáng kể) nên sàn IR khi hở sáng cũng thấp hơn — comment trong file đó cần đo lại rồi viết lại. Ngưỡng 25000 hiện dựa trên thử nghiệm thực nghiệm, chưa có phép đo nền nào đi kèm ở mức sáng mới.
 - **Cửa sổ SpO2 trượt**: đầy 100 mẫu → tính → trượt đi 1 giây (`memmove`), thay vì vứt cả cửa sổ.
 - **`checkSensorAlive()`**: đọc lại Part ID (`0x15`) mỗi 3 giây. Module nối dây có thể rơi bất kỳ lúc nào; màn hình phải ngừng hiện số cũ trong vài giây, không được giữ mãi.
 - **Chặn số cũ (stale guard)**: 6 giây không có nhịp nào → `hrValid = false`.
@@ -384,6 +415,23 @@ Cảm ứng: Quick Menu        Lệnh từ điện thoại qua BLE      Nút V�
 - ❌ **Nút vật lý BOOT (GPIO 0)** — không có `#define` nào cho GPIO 0. Khi làm: GPIO 0 là **chân strapping**, chỉ được đọc **sau khi `setup()` chạy xong**, không được đọc lúc khởi động.
 - ❌ **Nhấn giữ màn hình HOME 3 giây** — không có mã xử lý long-press nào trong [cst816s_service.cpp](src/sensors/cst816s_service.cpp).
 
+### 🔴 Đường BLE không có xác thực
+
+Đặc tả byte-by-byte của cả 4 characteristic nằm ở **[BLE_PROTOCOL.md](BLE_PROTOCOL.md)** —
+đó là tài liệu ứng dụng điện thoại phải theo.
+
+Một điểm phải nêu ngay ở đây vì nó liên quan trực tiếp tới kịch bản SOS:
+[ble_service.cpp](src/connectivity/ble_service.cpp) đặt `setSecurityAuth(false, false, false)`
+và IO capability `NO_INPUT_OUTPUT` — tức **Just Works: không bonding, không mã hoá, không xác thực**.
+
+Đây là đánh đổi có chủ ý (bonding khiến điện thoại phải "Forget Device" thủ công sau mỗi lần nạp
+firmware — một hỏng hóc im lặng ở đúng lúc tệ nhất). Nhưng hệ quả phải ghi rõ:
+
+> **Bất kỳ thiết bị BLE nào trong tầm sóng đều ghi được `BLE_CHAR_COMMAND_UUID`**, nghĩa là
+> huỷ được một cảnh báo té ngã thật (`0x01`), hoặc bắn một SOS giả (`0x02`).
+> Chấp nhận được ở mức *đủ để báo cáo*. **Không chấp nhận được ở mức *dám đeo thật*** —
+> xem hai mức nghiệm thu ở §11.
+
 ---
 
 ## 7. Mạch Quản lý Pin & Đo Điện áp ADC
@@ -538,12 +586,19 @@ Cảnh báo này bắn thẳng vào nhóm Telegram gia đình, nên phải lọc
 ### 9.3 — Thứ tự phụ thuộc
 
 ```text
-A4 (log FALLCSV)  ──────────────────────────> 9.1  AI Té ngã
-B0 (PPG 200Hz)  ──┐
-B1 (median+gate) ─┼───> Tầng 4 ─┐
-B2 (Kalman+SQI) ──┘             ├──────────> 9.2  Sàng lọc khoảng RR
-                    Tầng 5 ─────┘
+A4 (log FALLCSV)  ─────────────────────────────────> 9.1  AI Té ngã
+
+B1a (median + chặn 15 BPM/s)  ✅ ĐÃ CÓ ─┐
+B1b (van thoát 8 lần)         ❌ THIẾU ─┴─> Tầng 4 ─┐
+                                                    ├─> 9.2  Sàng lọc khoảng RR
+B2  (Kalman + chặn theo SQI)  ❌ THIẾU ────> Tầng 5 ─┤
+                                                    │
+B0  (PPG 200 Hz + mốc từ FIFO) ❌ THIẾU ────────────┘
 ```
+
+> Đọc sơ đồ: 9.2 **chưa thể bắt đầu**. Nó cần cả ba nhánh, mà hiện chỉ có B1a.
+> B0 là điều kiện tiên quyết cứng (độ phân giải 40 ms không đo nổi RMSSD 20–50 ms);
+> B1b và B2 là điều kiện về độ sạch (một nhịp sai làm khoảng RR gấp đôi → dương tính giả rung nhĩ).
 
 ---
 
@@ -632,17 +687,29 @@ trên tính năng cốt lõi nhất của sản phẩm.
 đại lượng đo. Cộng thêm ~20 ms jitter do lấy mốc bằng `millis()` lúc vòng lặp chạy thay vì lúc mẫu được lấy.
 **Chặn hoàn toàn §9.2.** Khắc phục: Giai đoạn 5 / Phần B — nâng 200 Hz + suy mốc thời gian từ chỉ số FIFO.
 
-**3. Số nhịp ảo chưa bị chặn.** Bộ lọc duy nhất hiện có là `40 < BPM < 200`
-([max30102_service.cpp](src/sensors/max30102_service.cpp)). Một nhịp ảo 180 BPM lọt qua và kéo trung bình 4 nhịp
-từ 75 lên ~101. Đây đúng là hiện tượng mà §3 Tầng 4 sinh ra để trị — và Tầng 4 chưa tồn tại.
+**3. 🔴 Tầng 4 thiếu van thoát — nhịp tim khoá cứng vĩnh viễn.** *(thay cho hạn chế "số nhịp ảo
+chưa bị chặn" — vấn đề đó đã được xử lý, nhưng cách xử lý lại sinh ra một lỗi nặng hơn.)*
 
-**4. DSP Tầng 4 và 5 chưa tồn tại.** Đặc tả cũ mô tả chúng như đã có. Chúng chưa có. Xem §3.
+Số nhịp ảo nay đã bị chặn: dải hợp lệ siết còn `45 ≤ BPM ≤ 180`, thêm trung vị thật và bộ chặn
+15 BPM/s. Nhưng bộ chặn so nhịp mới với **đầu ra của chính nó**, không có van thoát, nên khi
+nhịp thật tăng vọt thì mọi nhịp mới đều bị loại và màn hình đứng yên ở giá trị cũ cho tới khi
+mất tiếp xúc da. Diễn giải đầy đủ kèm cách sửa: [§3](#3-chuỗi-xử-lý-tín-hiệu-nhịp-tim--spo2-tại-biên).
+
+Đây là lỗi **nguy hiểm hơn** cái nó thay thế: số ảo 180 BPM thì người dùng nhìn là biết sai,
+còn một con số hợp lý nhưng đông cứng thì không ai phát hiện được.
+
+**4. DSP Tầng 5 chưa tồn tại** (Kalman + chặn hiển thị theo SQI). Tầng 4 mới có một nửa. Xem §3.
 
 ### ⚪ Trung bình / Thấp
 
-**5. Toàn bộ ngưỡng chưa hiệu chuẩn.** Mọi hằng số té ngã ở §4 và thang SQI ở §3 là số phỏng đoán — giá trị
-khởi điểm thông dụng, không phải số đo trên thiết bị này với người đeo thật. `PPG_CONTACT_IR_THRESHOLD = 35000`
-là ngoại lệ duy nhất đã đo (nhưng đo trên bàn, chưa đo khi đeo).
+**5. Toàn bộ ngưỡng té ngã chưa hiệu chuẩn.** Mọi hằng số ở §4 và thang SQI ở §3 là số phỏng đoán — giá trị
+khởi điểm thông dụng, không phải số đo trên thiết bị này với người đeo thật.
+
+Nhóm PPG (`PPG_CONTACT_IR_THRESHOLD = 25000`, `MAX30102_LED_BRIGHTNESS = 0x30`,
+`PPG_MOTION_STD_G = 0.08`) **đã** qua nhiều đợt chỉnh trên thiết bị thật, nên đáng tin hơn nhóm té ngã.
+Nhưng chúng được chỉnh theo tiêu chí "hết báo số ảo khi hở sáng", chưa đối chiếu với thiết bị đo tham chiếu
+khi đeo — và comment giải thích trong [app_config.h](include/app_config.h) vẫn là bằng chứng đo ở mức LED cũ
+`0x5F`, cần đo lại rồi viết lại.
 
 **6. Tính năng còn thiếu** (Giai đoạn 6 / Phần C):
 - ❌ Nút SOS vật lý BOOT (GPIO 0) — §6
@@ -655,9 +722,15 @@ là ngoại lệ duy nhất đã đo (nhưng đo trên bàn, chưa đo khi đeo)
 với ai. Trong mạng Wi-Fi nhà thì rủi ro thấp; muốn chặt chẽ thì phải nhúng CA root của Telegram và xử lý việc
 chứng chỉ hết hạn.
 
-**8. Toàn bộ §9 TinyML chưa tồn tại.** Không có model, không có `ai_models/`, không có `esp-tflite-micro`.
+**8. 🟠 BLE không có xác thực — ai trong tầm sóng cũng huỷ được cảnh báo thật.** `setSecurityAuth(false,
+false, false)` + `IO_NO_INPUT_OUTPUT` (Just Works, không ghép cặp). Bất kỳ thiết bị nào cũng ghi được vào
+`BLE_CHAR_COMMAND_UUID` để huỷ báo động té ngã đang đếm lùi, hoặc bắn SOS giả. Đây là **đánh đổi có chủ ý**
+(nếu bật bonding thì mỗi lần nạp firmware phải "Forget Device" trên điện thoại), nhưng phải sửa trước khi
+dùng thật. Chi tiết và hướng khắc phục: [BLE_PROTOCOL.md](BLE_PROTOCOL.md) §6.
 
-**9. Phụ thuộc phần cứng nối dây tay.** MAX30102 là module rời nối bằng dây (§2). Đây là điểm hỏng cơ khí có thật —
+**9. Toàn bộ §9 TinyML chưa tồn tại.** Không có model, không có `ai_models/`, không có `esp-tflite-micro`.
+
+**10. Phụ thuộc phần cứng nối dây tay.** MAX30102 là module rời nối bằng dây (§2). Đây là điểm hỏng cơ khí có thật —
 `checkSensorAlive()` tồn tại chính vì lý do đó.
 
 ### Hai mức nghiệm thu — hãy chọn đúng mức khi phát biểu về dự án
@@ -666,7 +739,8 @@ chứng chỉ hết hạn.
 |---|---|---|
 | Lỗi 🔴 | Đã sửa trong code | Đã sửa **và kiểm chứng trên phần cứng** |
 | Té ngã | Ma trận nhầm lẫn, độ nhạy / độ đặc hiệu, đường ROC trên tập test | Thử nghiệm thực địa **nhiều ngày** trên người đeo thật, đếm báo động giả/ngày |
-| Nhịp tim | So sánh với thiết bị tham chiếu ở tư thế ngồi yên | Ổn định khi vận động; Tầng 4+5 hoạt động |
+| Nhịp tim | So sánh với thiết bị tham chiếu ở tư thế ngồi yên | Ổn định khi vận động; Tầng 4 có van thoát + Tầng 5 hoạt động |
+| BLE | Kết nối và đọc được từ điện thoại | Có ghép cặp/bonding — lệnh huỷ báo động không thể bị giả mạo |
 | Ngưỡng | Ghi rõ là chưa hiệu chuẩn | Đã hiệu chuẩn bằng số đo |
 | Cảnh báo | Gửi được tin thật một lần | Kiểm chứng đường mất mạng: hàng đợi NVS, retry, khôi phục sau reboot |
 | Diễn đạt | "sàng lọc / gợi ý", có miễn trừ | "sàng lọc / gợi ý", có miễn trừ **+ hướng dẫn sử dụng rõ ràng** |
@@ -684,10 +758,12 @@ kiểm chứng, và các ngưỡng vẫn là số phỏng đoán.
 | 1 | Chuyển firmware vào repo, tag `v0.1-arduino-baseline` | ✅ Xong |
 | 3 (Phần A) | Sửa lỗi té ngã 🔴, tag `v0.2-fall-fix` | ✅ Xong code, ⏳ chờ kiểm chứng phần cứng |
 | 2 | Viết lại tài liệu cho đúng sự thật | ✅ Xong (tài liệu này) |
-| 4 | Đổi `framework = arduino, espidf` (nhánh riêng) | ⏳ |
-| 5 (Phần B) | DSP Tầng 4+5 + nâng PPG 200 Hz | ⏳ |
+| 2b | README, `BLE_PROTOCOL.md`, cho `.CLAUDE/Plan/` nghỉ hưu | ✅ Xong |
+| 5 (Phần B) | Van thoát Tầng 4 + DSP Tầng 5 (Kalman/SQI) + nâng PPG 200 Hz | ⏳ Kế tiếp |
 | 6 (Phần C) | Nút SOS BOOT, cảnh báo pin yếu, cảnh báo ngưỡng sinh lý | ⏳ |
 | 7 (Phần D) | TinyML: cây té ngã + sàng lọc khoảng RR | ⏳ |
+| 8 | Đánh giá: ma trận nhầm lẫn, độ nhạy/đặc hiệu, ROC, so với baseline 4 pha | ⏳ |
+| 4 | Đổi `framework = arduino, espidf` (nhánh riêng, **làm sau cùng**) | ⏳ |
 
 ---
 
