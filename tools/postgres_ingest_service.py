@@ -1,5 +1,5 @@
 """
-SafeWatch PostgreSQL Real-time Ingestion Service
+SafeWatch PostgreSQL Real-time Ingestion Service with Touch Event Logging
 Listens to ESP32-S3 WebSocket Telemetry (ws://192.168.20.152:8080)
 and writes records continuously to local PostgreSQL (safewatch_db).
 """
@@ -41,6 +41,11 @@ CREATE TABLE IF NOT EXISTS safewatch_telemetry (
     gyro_x INT DEFAULT 0,
     gyro_y INT DEFAULT 0,
     gyro_z INT DEFAULT 0,
+    touch_active BOOLEAN DEFAULT FALSE,
+    touch_x INT DEFAULT 0,
+    touch_y INT DEFAULT 0,
+    gesture_name VARCHAR(50) DEFAULT 'NONE',
+    screen_id INT DEFAULT 0,
     fall_state INT DEFAULT 0,
     countdown INT DEFAULT 15,
     battery INT DEFAULT 0,
@@ -72,29 +77,23 @@ INSERT_TELEMETRY_SQL = """
 INSERT INTO safewatch_telemetry (
     patient_id, patient_name, pulse, spo2, quality, skin_contact,
     hr_valid, spo2_valid, motion_artifact, accel_x, accel_y, accel_z,
-    gyro_x, gyro_y, gyro_z, fall_state, countdown, battery, voltage,
+    gyro_x, gyro_y, gyro_z, touch_active, touch_x, touch_y, gesture_name,
+    screen_id, fall_state, countdown, battery, voltage,
     charging, rssi, uptime_sec, device_ip
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-    $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23
+    $13, $14, $15, $16, $17, $18, $19, $20, $21, $22,
+    $23, $24, $25, $26, $27, $28
 );
-"""
-
-INSERT_FALL_SQL = """
-INSERT INTO safewatch_fall_events (
-    patient_id, patient_name, event_type, confidence_pct, severity,
-    pulse_at_event, spo2_at_event, accel_mag_g, action_taken, device_ip
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
 """
 
 async def main():
     print("==========================================================================")
-    print(" 🐘 SAFEWATCH REALTIME POSTGRESQL INGESTION SERVICE")
+    print(" 🐘 SAFEWATCH REALTIME POSTGRESQL INGESTION SERVICE (TOUCH SYNC ACTIVE)")
     print(f" Target WebSocket : {WS_URL}")
     print(f" PostgreSQL Server: {PG_HOST}:{PG_PORT}/{PG_DB}")
     print("==========================================================================\n")
 
-    # Connect to PostgreSQL
     try:
         pool = await asyncpg.create_pool(
             user=PG_USER,
@@ -109,17 +108,25 @@ async def main():
         
         async with pool.acquire() as conn:
             await conn.execute(TABLE_INIT_SQL)
-            print(" -> SUCCESS: PostgreSQL Schemas 'safewatch_telemetry' & 'safewatch_fall_events' Ready.")
+            # Add columns if table existed prior
+            try:
+                await conn.execute("ALTER TABLE safewatch_telemetry ADD COLUMN IF NOT EXISTS touch_active BOOLEAN DEFAULT FALSE;")
+                await conn.execute("ALTER TABLE safewatch_telemetry ADD COLUMN IF NOT EXISTS touch_x INT DEFAULT 0;")
+                await conn.execute("ALTER TABLE safewatch_telemetry ADD COLUMN IF NOT EXISTS touch_y INT DEFAULT 0;")
+                await conn.execute("ALTER TABLE safewatch_telemetry ADD COLUMN IF NOT EXISTS gesture_name VARCHAR(50) DEFAULT 'NONE';")
+                await conn.execute("ALTER TABLE safewatch_telemetry ADD COLUMN IF NOT EXISTS screen_id INT DEFAULT 0;")
+            except Exception:
+                pass
+            print(" -> SUCCESS: PostgreSQL Schemas 'safewatch_telemetry' Ready.")
     except Exception as e:
         print(f"🔴 PostgreSQL Connection Error: {e}")
         return
 
-    # WebSocket Ingestion Loop
     while True:
         try:
             print(f"\n -> Connecting to SafeWatch WebSocket at {WS_URL}...")
             async with websockets.connect(WS_URL, ping_interval=10, ping_timeout=5) as ws:
-                print(f" -> 🟢 CONNECTED to SafeWatch on {WS_URL}! Streaming telemetry to PostgreSQL...\n")
+                print(f" -> 🟢 CONNECTED to SafeWatch on {WS_URL}! Streaming telemetry & touch events to PostgreSQL...\n")
                 
                 count = 0
                 async for message in ws:
@@ -128,6 +135,7 @@ async def main():
                         if data.get("type") == "telemetry" or "pulse" in data:
                             accel = data.get("accel", {})
                             gyro = data.get("gyro", {})
+                            touch = data.get("touch", {})
 
                             async with pool.acquire() as conn:
                                 await conn.execute(
@@ -147,6 +155,11 @@ async def main():
                                     int(gyro.get("x", 0)),
                                     int(gyro.get("y", 0)),
                                     int(gyro.get("z", 0)),
+                                    bool(touch.get("touched", False)),
+                                    int(touch.get("x", 0)),
+                                    int(touch.get("y", 0)),
+                                    str(touch.get("gesture", "NONE")),
+                                    int(data.get("screen", 0)),
                                     int(data.get("fallState", 0)),
                                     int(data.get("countdown", 15)),
                                     int(data.get("battery", 0)),
@@ -158,26 +171,10 @@ async def main():
                                 )
 
                             count += 1
-                            if count % 10 == 0:
-                                print(f" [DB INGEST] Saved {count} records | Pulse: {data.get('pulse', 0)} BPM | SpO2: {data.get('spo2', 0)}% | Skin: {data.get('skinContact', False)} | Bat: {data.get('battery', 0)}%")
-
-                        # Fall Detection Event
-                        if data.get("type") == "fall_alert" or data.get("fallState", 0) in [2, 3]:
-                            async with pool.acquire() as conn:
-                                await conn.execute(
-                                    INSERT_FALL_SQL,
-                                    'CG-AI-9988-VN',
-                                    'Nguyễn Thị Mai Lan',
-                                    'FALL_IMPACT_DETECTED',
-                                    99.20,
-                                    'CRITICAL',
-                                    int(data.get("pulse", 0)),
-                                    int(data.get("spo2", 0)),
-                                    3.85,
-                                    'Đã tự động gửi cảnh báo khẩn cấp Telegram và lưu cơ sở dữ liệu PostgreSQL',
-                                    str(data.get("ip", WATCH_IP))
-                                )
-                            print(" [DB INGEST] 🚨 EMERGENCY: Saved Fall Incident Event to PostgreSQL!")
+                            if touch.get("touched"):
+                                print(f" 👉 [TOUCH EVENT SAVED] X={touch.get('x')} Y={touch.get('y')} Gesture={touch.get('gesture')} Screen={data.get('screen')}")
+                            elif count % 20 == 0:
+                                print(f" [DB INGEST] Saved {count} records | Pulse: {data.get('pulse', 0)} BPM | SpO2: {data.get('spo2', 0)}% | Skin: {data.get('skinContact', False)}")
 
                     except Exception as parse_err:
                         print(f"⚠️ JSON Parse / Insert Error: {parse_err}")

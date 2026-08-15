@@ -123,6 +123,8 @@ class WebSocketBridgeService {
         accel: data.accel || { x: 0, y: 0, z: 0 },
         gyro: data.gyro || { x: 0, y: 0, z: 0 },
         sensors: data.sensors || { imuOk: true, hrOk: true, touchOk: true },
+        touch: data.touch || { touched: false, x: 0, y: 0, gesture: "NONE" },
+        screen: data.screen !== undefined ? data.screen : 0,
         fallState: data.fallState || 0,
         countdown: data.countdown || 15,
         battery: data.battery || 0,
