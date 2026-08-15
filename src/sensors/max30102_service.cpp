@@ -18,11 +18,22 @@ static unsigned long lastBeatMs = 0;
 // PPG_GATE_ESCAPE_BEATS forces the next one through; see the gate itself.
 static uint8_t gateRejections = 0;
 
-// The Maxim SpO2 routine wants 100 samples at 25 Hz, which is exactly what the
-// sensor configuration below produces (100 Hz sampling, averaged by 4).
+// The Maxim SpO2 routine wants 100 samples at 25 Hz. FreqS and BUFFER_SIZE are
+// #defines inside the SparkFun library, so that rate is not negotiable -- but
+// the sensor now runs at 200 Hz for the sake of RR-interval resolution. The two
+// are reconciled by averaging PPG_DECIMATE raw samples into each buffer slot.
 static uint32_t irBuffer[BUFFER_SIZE];
 static uint32_t redBuffer[BUFFER_SIZE];
 static int bufferCount = 0;
+
+// 200 Hz / 8 = 25 Hz, which is exactly FreqS.
+//
+// Averaging rather than taking every eighth sample: decimating by selection
+// folds anything above 12.5 Hz back down into the band the SpO2 routine cares
+// about. Averaging attenuates it instead.
+#define PPG_DECIMATE 8
+static uint8_t  decimateCount = 0;
+static uint32_t irAccum = 0, redAccum = 0;
 
 // Rolling AC/DC measurement for the signal-quality figure.
 static uint32_t irMin = 0xFFFFFFFF, irMax = 0;
@@ -56,6 +67,8 @@ static void updateMotionEstimate() {
 
 static void resetMeasurement() {
     bufferCount = 0;
+    decimateCount = 0;
+    irAccum = redAccum = 0;
     rateIndex = 0;
     lastBeatMs = 0;
     gateRejections = 0;
@@ -79,8 +92,14 @@ void initMAX30102Service() {
     if (particleSensor.begin(Wire1, I2C_SPEED_FAST, MAX30102_I2C_ADDR)) {
         maxDetected = true;
         // brightness, sampleAverage, ledMode, sampleRate, pulseWidth, adcRange
-        // 100 Hz averaged by 4 gives the 25 Hz the SpO2 routine expects.
-        particleSensor.setup(MAX30102_LED_BRIGHTNESS, 4, 2, 100, 411, 4096);
+        //
+        // 200 Hz with NO hardware averaging (second argument 1), giving 5 ms per
+        // sample. The old 100 Hz averaged by 4 worked out to 25 Hz -- 40 ms of
+        // quantisation against an RMSSD of 20-50 ms, which made the measurement
+        // error the same size as the quantity being measured. RR analysis was
+        // impossible until this line changed. SpO2 still gets its 25 Hz via
+        // PPG_DECIMATE.
+        particleSensor.setup(MAX30102_LED_BRIGHTNESS, 1, 2, 200, 411, 4096);
         Serial.println(" -> SUCCESS: MAX30102 Service Active (wrist PPG).");
     } else {
         maxDetected = false;
@@ -111,7 +130,9 @@ static void checkSensorAlive() {
     } else if (alive && !maxDetected) {
         maxDetected = true;
         g_watchState.hrSensorOk = true;
-        particleSensor.setup(MAX30102_LED_BRIGHTNESS, 4, 2, 100, 411, 4096);
+        // Must match initMAX30102Service() exactly -- a sensor that comes back
+        // at a different rate would silently corrupt every timing calculation.
+        particleSensor.setup(MAX30102_LED_BRIGHTNESS, 1, 2, 200, 411, 4096);
         resetMeasurement();
         Serial.println(" -> MAX30102 back online. Vitals resumed.");
     }
@@ -227,9 +248,20 @@ void updateMAX30102Service() {
 
         // Fill the SpO2 window, then slide it by one second so the value
         // refreshes without discarding four seconds of good signal.
-        irBuffer[bufferCount]  = ir;
-        redBuffer[bufferCount] = red;
+        //
+        // Beat detection above sees every one of the 200 samples a second; this
+        // branch only takes one slot per PPG_DECIMATE of them, because the Maxim
+        // routine has 25 Hz baked into it. Feeding it 200 Hz would make it read
+        // every interval as eight times longer than it is.
+        irAccum  += ir;
+        redAccum += red;
+        if (++decimateCount < PPG_DECIMATE) continue;
+
+        irBuffer[bufferCount]  = irAccum  / PPG_DECIMATE;
+        redBuffer[bufferCount] = redAccum / PPG_DECIMATE;
         bufferCount++;
+        decimateCount = 0;
+        irAccum = redAccum = 0;
 
         if (bufferCount >= BUFFER_SIZE) {
             int32_t spo2 = 0, hr = 0;
