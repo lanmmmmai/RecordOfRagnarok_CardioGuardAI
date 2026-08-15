@@ -54,12 +54,18 @@ static void evaluate(VitalKind kind, bool breached, const char* message) {
 }
 
 void updateVitalMonitor() {
-    // Nothing worth saying without a trustworthy number. Both gates matter:
+    // Nothing worth saying without a trustworthy number. Every gate matters:
     // hrValid alone would still let through a reading taken off a poorly
-    // seated sensor, and PPG_MIN_SQI is what stage 5 uses for the display.
+    // seated sensor, PPG_MIN_SQI is what stage 5 uses for the display, and the
+    // beat count covers the case both of those miss -- a detector whose peak
+    // reference has not converged yet reports a confident number from a
+    // threshold that is still wrong. That is how the 2026-08-13 00:00 session
+    // sent a high-heart-rate alert 11 seconds after boot, with hrValid set and
+    // SQI reading 52.
     bool hrTrusted = g_watchState.hrValid &&
                      g_watchState.signalQuality >= PPG_MIN_SQI &&
-                     g_watchState.skinContact;
+                     g_watchState.skinContact &&
+                     g_watchState.beatsSinceContact >= PPG_WARMUP_BEATS;
 
     if (!hrTrusted) {
         breachSince[VITAL_HR_HIGH_KIND] = 0;
