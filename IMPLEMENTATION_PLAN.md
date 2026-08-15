@@ -75,7 +75,7 @@ lib_deps =
 // WiFi & Telegram Credentials
 #define WIFI_SSID           "Your_WiFi_SSID"
 #define WIFI_PASSWORD       "Your_WiFi_Password"
-#define TELEGRAM_BOT_TOKEN  "YOUR_TELEGRAM_BOT_TOKEN"
+#define TELEGRAM_BOT_TOKEN  "YOUR_TELEGRAM_BOT_TOKEN" // Bot: @Gia_Dinh_bot (TroLiGiaDinh)
 #define TELEGRAM_CHAT_ID    "YOUR_TELEGRAM_CHAT_ID"
 
 // Fall Detection Constants
