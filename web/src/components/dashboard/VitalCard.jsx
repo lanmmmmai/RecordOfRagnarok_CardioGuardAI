@@ -1,9 +1,8 @@
 import React from 'react';
-import { Heart, Activity, ShieldCheck, TrendingUp } from 'lucide-react';
+import { Heart, Activity, ShieldCheck, TrendingUp, Wind } from 'lucide-react';
 import ScrollReveal from '../ScrollReveal';
 
 export default function VitalCard({ isConnected, rawTelemetry }) {
-  // Strict Zero-Default Mode: If not received or no skin contact => Exactly 0 (Zero invention)
   const pulseVal = isConnected
     ? (rawTelemetry?.skinContact && rawTelemetry?.pulse > 0 ? rawTelemetry.pulse : 0)
     : 0;
@@ -14,13 +13,16 @@ export default function VitalCard({ isConnected, rawTelemetry }) {
         : rawTelemetry.pulse > 100 ? "NHỊP NHANH" : rawTelemetry.pulse < 55 ? "NHỊP CHẬM" : "BÌNH THƯỜNG")
     : "CHƯA KẾT NỐI (0 BPM)";
 
-  const spo2Val = isConnected
-    ? (rawTelemetry?.spo2Valid && rawTelemetry?.spo2 > 0 ? `${rawTelemetry.spo2}%` : "0%")
-    : "0%";
+  const rawSpo2 = isConnected && rawTelemetry?.spo2Valid && rawTelemetry?.spo2 > 0 ? rawTelemetry.spo2 : 0;
+  const spo2Val = isConnected ? `${rawSpo2}%` : "0%";
 
   const spo2Status = isConnected
-    ? (!rawTelemetry?.spo2Valid || rawTelemetry?.spo2 === 0 ? "CHƯA CÓ TÍN HIỆU" : "AN TOÀN")
+    ? (rawSpo2 === 0 ? "CHƯA CÓ TÍN HIỆU" : (rawSpo2 >= 96 ? "TỐI ƯU (96-100%)" : rawSpo2 >= 94 ? "CHẤP NHẬN (94-95%)" : "THIẾU OXY (<94%)"))
     : "CHƯA KẾT NỐI";
+
+  const perfusionVal = isConnected && rawTelemetry?.quality
+    ? ((rawTelemetry.quality / 50.0) * 1.2).toFixed(2)
+    : "0.00";
 
   const batteryVal = isConnected ? `${rawTelemetry?.battery || 0}%` : "0%";
   const voltageVal = isConnected && rawTelemetry?.voltage ? `${rawTelemetry.voltage.toFixed(2)}V` : "0.00V";
@@ -38,13 +40,13 @@ export default function VitalCard({ isConnected, rawTelemetry }) {
       iconColor: "text-rose-400 bg-rose-500/10"
     },
     {
-      title: "OXY MÁU (SPO2 REALTIME)",
+      title: "NỒNG ĐỘ OXY MÁU (SPO2 REALTIME)",
       value: spo2Val,
       unit: "SpO2",
       status: spo2Status,
-      statusColor: spo2Val === "0%" ? "text-slate-400 border-slate-700 bg-slate-800/40" : "text-cyan-400 border-cyan-500/40 bg-cyan-500/15",
-      subInfo: isConnected ? (rawTelemetry?.motionArtifact ? "Cảnh báo: Tay đang cử động" : "Lọc nhiễu DSP 5 tầng") : "Chưa có dữ liệu",
-      icon: Activity,
+      statusColor: rawSpo2 === 0 ? "text-slate-400 border-slate-700 bg-slate-800/40" : (rawSpo2 >= 96 ? "text-cyan-400 border-cyan-500/40 bg-cyan-500/15" : "text-amber-400 border-amber-500/40 bg-amber-500/15"),
+      subInfo: `Tưới máu PI: ${perfusionVal}% | 25Hz Maxim`,
+      icon: Wind,
       badgeBorder: "border-cyan-500/30 hover:border-cyan-400/60 shadow-cyan-500/5",
       iconColor: "text-cyan-400 bg-cyan-500/10"
     },

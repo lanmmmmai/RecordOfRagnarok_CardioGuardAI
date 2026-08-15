@@ -9,11 +9,12 @@ import FallLogsTable from './FallLogsTable';
 import EmergencyConfig from './EmergencyConfig';
 import DataCollectorModule from './DataCollectorModule';
 import TelegramLiveLogsModule from './TelegramLiveLogsModule';
+import SpO2ClinicalModule from './SpO2ClinicalModule';
 import ClinicalReportModal from './ClinicalReportModal';
 import ScrollReveal from '../ScrollReveal';
 import { websocketBridgeService } from '../../services/websocketBridgeService';
 
-import { Database, Compass, History, Fingerprint, Monitor } from 'lucide-react';
+import { Database, Compass, History, Fingerprint, Monitor, Wind } from 'lucide-react';
 
 export default function Dashboard({
   userProfile,
@@ -161,6 +162,18 @@ export default function Dashboard({
             </button>
 
             <button
+              onClick={() => setActiveSubTab('SPO2')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 ${
+                activeSubTab === 'SPO2'
+                  ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Wind className="w-4 h-4" />
+              <span>Chuyên Sâu Oxy Máu (SpO2)</span>
+            </button>
+
+            <button
               onClick={() => setActiveSubTab('IMU')}
               className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 ${
                 activeSubTab === 'IMU'
@@ -202,6 +215,15 @@ export default function Dashboard({
               <TelegramLiveLogsModule userProfile={userProfile} simulatedBpm={rawTelemetry?.pulse || 0} onLogEvent={eventLogs} />
             </ScrollReveal>
           </>
+        )}
+
+        {activeSubTab === 'SPO2' && (
+          <ScrollReveal delay={100}>
+            <SpO2ClinicalModule
+              isConnected={connectionState.connected}
+              rawTelemetry={rawTelemetry}
+            />
+          </ScrollReveal>
         )}
 
         {activeSubTab === 'IMU' && (
