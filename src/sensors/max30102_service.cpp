@@ -4,6 +4,8 @@
 #include <spo2_algorithm.h>
 #include <math.h>
 
+#include "../dsp/rr_analysis.h"
+
 static MAX30105 particleSensor;
 static bool maxDetected = false;
 
@@ -54,6 +56,9 @@ static uint32_t irAccum = 0, redAccum = 0;
 static uint32_t irMin = 0xFFFFFFFF, irMax = 0;
 static unsigned long lastQualityCalc = 0;
 
+// Counts the once-a-second quality passes, so the HRV log fires every tenth.
+static uint8_t hrvLogTick = 0;
+
 // Short history of total acceleration, used to reject samples taken while the
 // arm is swinging. Wrist PPG is dominated by motion artefact otherwise, and
 // this is the single most important reason wrist readings can be trusted.
@@ -89,6 +94,11 @@ static void resetMeasurement() {
     sampleIndex = 0;
     lastBeatSample = 0;
     gateRejections = 0;
+    // Drop the RR history too. It is called on every loss of skin contact, and
+    // an interval spanning a gap where the finger was off the sensor is not a
+    // heartbeat interval -- it would enter the window as one huge outlier and
+    // drag RMSSD up for the next hundred beats.
+    resetRRAnalysis();
     memset(rates, 0, sizeof(rates));
     irMin = 0xFFFFFFFF;
     irMax = 0;
@@ -237,6 +247,13 @@ void updateMAX30102Service() {
                         gateRejections++;
                     } else {
                         gateRejections = 0;
+
+                        // Only intervals that got past the gate. A missed beat
+                        // doubles the interval and looks exactly like atrial
+                        // fibrillation -- and that alert goes straight to the
+                        // family group.
+                        pushRRInterval(deltaMs);
+
                         rates[rateIndex] = (uint8_t)bpm;
                         rateIndex = (rateIndex + 1) % RATE_SIZE;
 
@@ -334,6 +351,19 @@ void updateMAX30102Service() {
         if (g_watchState.hrValid && lastBeatMs > 0 && millis() - lastBeatMs > 6000) {
             g_watchState.hrValid = false;
             g_watchState.heartRateBPM = 0;
+        }
+
+        // HRV every tenth pass through this once-a-second block. Purely for
+        // observation right now -- these three numbers are the input the rhythm
+        // model of Giai đoạn 7 will be trained against, so they need watching on
+        // a real wrist long before anything is allowed to raise an alert.
+        if (++hrvLogTick >= 10) {
+            hrvLogTick = 0;
+            float rmssd, pnn50, ent;
+            if (getRRFeatures(&rmssd, &pnn50, &ent)) {
+                Serial.printf(" [HRV] n=%u RMSSD=%.1fms pNN50=%.1f%% H=%.2f\n",
+                              getRRCount(), rmssd, pnn50, ent);
+            }
         }
     }
 }
