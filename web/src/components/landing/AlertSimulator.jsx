@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AlertTriangle, ShieldCheck, XCircle, Send, Volume2, CheckCircle2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { websocketBridgeService } from '../../services/websocketBridgeService';
 
 export default function AlertSimulator({ isOpen, onClose, onLogEvent }) {
   const [countdown, setCountdown] = useState(15);
@@ -21,7 +22,6 @@ export default function AlertSimulator({ isOpen, onClose, onLogEvent }) {
       }, 1000);
       return () => clearTimeout(timer);
     } else if (countdown === 0 && !isCancelled && !isSent) {
-      // Alarm triggered!
       setIsSent(true);
       if (onLogEvent) {
         onLogEvent({
@@ -48,6 +48,9 @@ export default function AlertSimulator({ isOpen, onClose, onLogEvent }) {
 
   const handleCancelSOS = () => {
     setIsCancelled(true);
+    // Send cancel command to physical watch via WebSocket
+    websocketBridgeService.sendCancelSOS();
+
     if (onLogEvent) {
       onLogEvent({
         id: `LOG-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -58,9 +61,14 @@ export default function AlertSimulator({ isOpen, onClose, onLogEvent }) {
         confidence: '100%',
         actionTaken: 'Người dùng bấm nút HỦY trên giao diện trong thời gian 15s',
         status: 'CANCELLED_BY_USER',
-        details: 'Đã bấm HỦY báo động thành công. Không gửi Telegram SOS.'
+        details: 'Đã bấm HỦY báo động thành công. Đã gửi lệnh hủy tới đồng hồ và không gửi Telegram SOS.'
       });
     }
+  };
+
+  const handleCloseModal = () => {
+    websocketBridgeService.sendCancelSOS();
+    if (onClose) onClose();
   };
 
   return (
@@ -76,7 +84,7 @@ export default function AlertSimulator({ isOpen, onClose, onLogEvent }) {
 
         {/* Close Modal Button */}
         <button
-          onClick={onClose}
+          onClick={handleCloseModal}
           className="absolute top-4 right-4 text-slate-400 hover:text-white p-2 rounded-full hover:bg-slate-800 transition-colors"
         >
           <XCircle className="w-6 h-6" />
@@ -160,7 +168,7 @@ export default function AlertSimulator({ isOpen, onClose, onLogEvent }) {
             <div>
               <h2 className="text-2xl font-black text-white">ĐÃ HỦY CẢNH BÁO TÉ NGÃ</h2>
               <p className="text-slate-300 text-xs mt-2">
-                Hệ thống CardioGuardAI đã ghi nhận phản hồi từ người dùng. Không có tin nhắn SOS nào được gửi tới Telegram.
+                Hệ thống CardioGuardAI đã gửi lệnh hủy tới đồng hồ. Không có tin nhắn SOS nào được gửi tới Telegram.
               </p>
             </div>
 
@@ -171,7 +179,7 @@ export default function AlertSimulator({ isOpen, onClose, onLogEvent }) {
             </div>
 
             <button
-              onClick={onClose}
+              onClick={handleCloseModal}
               className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm rounded-xl transition-all"
             >
               Đóng cửa sổ
@@ -195,14 +203,14 @@ export default function AlertSimulator({ isOpen, onClose, onLogEvent }) {
 
             <div className="p-4 bg-slate-900/90 rounded-2xl text-left border border-blue-500/30 text-xs font-mono space-y-1 text-slate-300">
               <p className="text-blue-400 font-bold">📲 Payload Telegram Sent:</p>
-              <p>• Bệnh nhân: Đại tá Nguyễn Văn An (64 tuổi)</p>
+              <p>• Bệnh nhân: Nguyễn Thị Mai Lan</p>
               <p>• Nhịp tim: 118 BPM | SpO2: 98%</p>
               <p>• Vị trí: Phòng khách (10.7769° N, 106.7009° E)</p>
               <p className="text-rose-400">✓ HTTPS API Response 200 OK</p>
             </div>
 
             <button
-              onClick={onClose}
+              onClick={handleCloseModal}
               className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm rounded-xl shadow-lg transition-all"
             >
               Đã hiểu & Đóng

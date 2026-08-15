@@ -1,4 +1,4 @@
-// WebSocket Bridge Service with Zero-Click Background Auto-Connect
+// WebSocket Bridge Service with Edge-Triggered Fall Alerts and Cancel SOS
 
 class WebSocketBridgeService {
   constructor() {
@@ -13,6 +13,7 @@ class WebSocketBridgeService {
     this.fallAlertListeners = new Set();
     this.statusListeners = new Set();
     this.latestTelemetry = null;
+    this.lastFallState = 0;
 
     // Start zero-click auto-connect immediately on load
     if (typeof window !== 'undefined') {
@@ -72,7 +73,6 @@ class WebSocketBridgeService {
         this.isConnected = false;
         this.notifyStatus('DISCONNECTED', `Đang tự động dò tìm đồng hồ SafeWatch (${this.ip})...`);
         
-        // Auto-reconnect daemon (silent background retry every 2.5s)
         if (this.autoReconnect && !this.reconnectTimer) {
           this.reconnectTimer = setTimeout(() => {
             this.reconnectTimer = null;
@@ -112,6 +112,8 @@ class WebSocketBridgeService {
     if (!data) return;
 
     if (data.type === 'telemetry' || data.pulse !== undefined) {
+      const currentFallState = data.fallState || 0;
+
       const telemetry = {
         pulse: data.pulse,
         spo2: data.spo2,
@@ -125,7 +127,7 @@ class WebSocketBridgeService {
         sensors: data.sensors || { imuOk: true, hrOk: true, touchOk: true },
         touch: data.touch || { touched: false, x: 0, y: 0, gesture: "NONE" },
         screen: data.screen !== undefined ? data.screen : 0,
-        fallState: data.fallState || 0,
+        fallState: currentFallState,
         countdown: data.countdown || 15,
         battery: data.battery || 0,
         voltage: data.voltage || 0.0,
@@ -137,24 +139,29 @@ class WebSocketBridgeService {
       };
       this.latestTelemetry = telemetry;
       this.telemetryListeners.forEach(fn => fn(telemetry));
-    }
 
-    if (data.type === 'fall_alert' || data.fallState === 2 || data.fallState === 3) {
-      this.fallAlertListeners.forEach(fn => fn(data));
+      // CRITICAL FIX: Only fire fall alert listeners on EDGE TRIGGER (rising edge)
+      if (data.type === 'fall_alert' || (currentFallState >= 2 && this.lastFallState < 2)) {
+        console.log('[WebSocket Bridge] 🚨 New Fall Incident Alert (Edge Triggered)');
+        this.fallAlertListeners.forEach(fn => fn(data));
+      }
+
+      this.lastFallState = currentFallState;
     }
   }
 
   sendCancelSOS() {
+    this.lastFallState = 0;
     if (this.ws && this.isConnected) {
       this.ws.send(JSON.stringify({ command: 'cancel_sos' }));
-      console.log('[WebSocket Bridge] Sent cancel_sos command');
+      console.log('[WebSocket Bridge] Sent cancel_sos command to ESP32-S3 Watch');
     }
   }
 
   sendTriggerSOS() {
     if (this.ws && this.isConnected) {
       this.ws.send(JSON.stringify({ command: 'trigger_sos' }));
-      console.log('[WebSocket Bridge] Sent trigger_sos command');
+      console.log('[WebSocket Bridge] Sent trigger_sos command to ESP32-S3 Watch');
     }
   }
 
