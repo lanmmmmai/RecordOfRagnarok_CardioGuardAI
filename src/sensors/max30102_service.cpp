@@ -161,7 +161,7 @@ void updateMAX30102Service() {
                         for (uint8_t i = 0; i < RATE_SIZE; i++) {
                             if (rates[i] > 0) { temp[valid++] = rates[i]; }
                         }
-                        if (valid == RATE_SIZE) {
+                        if (valid >= 2) {
                             // Sort for Median Filter
                             for (uint8_t i = 0; i < valid - 1; i++) {
                                 for (uint8_t j = i + 1; j < valid; j++) {
@@ -203,6 +203,10 @@ void updateMAX30102Service() {
                 g_watchState.spo2Valid = true;
             } else {
                 g_watchState.spo2Valid = false;
+            }
+            if (hrValidFlag && hr >= 45 && hr <= 180 && !g_watchState.hrValid) {
+                g_watchState.heartRateBPM = (uint16_t)hr;
+                g_watchState.hrValid = true;
             }
 
 
