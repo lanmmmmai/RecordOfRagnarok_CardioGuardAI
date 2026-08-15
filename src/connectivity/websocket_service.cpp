@@ -56,10 +56,11 @@ void updateWebSocketService() {
         lastBroadcast = millis();
 
         if (webSocket.connectedClients() > 0) {
-            char jsonBuf[576];
+            char jsonBuf[640];
             snprintf(jsonBuf, sizeof(jsonBuf),
                 "{\"type\":\"telemetry\",\"pulse\":%u,\"spo2\":%u,\"quality\":%u,\"skinContact\":%s,"
                 "\"hrValid\":%s,\"spo2Valid\":%s,\"motionArtifact\":%s,"
+                "\"raw\":{\"ir\":%lu,\"red\":%lu},"
                 "\"accel\":{\"x\":%d,\"y\":%d,\"z\":%d},\"gyro\":{\"x\":%d,\"y\":%d,\"z\":%d},"
                 "\"sensors\":{\"imuOk\":%s,\"hrOk\":%s,\"touchOk\":%s},"
                 "\"touch\":{\"touched\":%s,\"x\":%d,\"y\":%d,\"gesture\":\"%s\"},"
@@ -73,6 +74,7 @@ void updateWebSocketService() {
                 g_watchState.hrValid ? "true" : "false",
                 g_watchState.spo2Valid ? "true" : "false",
                 g_watchState.motionArtifact ? "true" : "false",
+                (unsigned long)g_watchState.irRaw, (unsigned long)g_watchState.redRaw,
                 (int)g_watchState.accX, (int)g_watchState.accY, (int)g_watchState.accZ,
                 (int)g_watchState.gyroX, (int)g_watchState.gyroY, (int)g_watchState.gyroZ,
                 g_watchState.imuOk ? "true" : "false",

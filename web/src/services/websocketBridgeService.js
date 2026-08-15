@@ -126,6 +126,7 @@ class WebSocketBridgeService {
         gyro: data.gyro || { x: 0, y: 0, z: 0 },
         sensors: data.sensors || { imuOk: true, hrOk: true, touchOk: true },
         touch: data.touch || { touched: false, x: 0, y: 0, gesture: "NONE" },
+        raw: data.raw || { ir: 0, red: 0 },
         screen: data.screen !== undefined ? data.screen : 0,
         fallState: currentFallState,
         countdown: data.countdown || 15,
