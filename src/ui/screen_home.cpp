@@ -49,13 +49,7 @@ void renderHomeScreen(TFT_eSprite& spr) {
     spr.setTextColor(UI_COLOR_WHITE, UI_COLOR_BLACK);
     spr.drawString(timeStr, SCREEN_CENTER_X, 74, 4);
 
-    // Analog Second Ring Arc around Clock
-    float angle = (g_watchState.second * 6.0f) - 90.0f;
-    float rad = angle * 0.0174532925f;
-    int arcX = SCREEN_CENTER_X + cosf(rad) * 42.0f;
-    int arcY = 74 + sinf(rad) * 42.0f;
-    spr.drawCircle(SCREEN_CENTER_X, 74, 42, UI_COLOR_BEZEL);
-    spr.fillCircle(arcX, arcY, 4, UI_COLOR_WARNING);
+    // Clean digital clock display
 
     const char* daysVN[] = {"CHỦ NHẬT", "THỨ HAI", "THỨ BA", "THỨ TƯ",
                             "THỨ NĂM", "THỨ SÁU", "THỨ BẢY"};
@@ -100,20 +94,24 @@ void renderHomeScreen(TFT_eSprite& spr) {
     // The pill sits at y=185..209 rather than lower down: this far from the
     // centre the round screen has already narrowed to about 155 usable pixels,
     // which is what the wording below is sized against.
+    // 4. FALL STATUS BADGE (Centered 150px Capsule Pill)
+    int pillW = 150;
+    int pillH = 26;
+    int pillX = SCREEN_CENTER_X - (pillW / 2); // 120 - 75 = 45
+    int pillY = 186;
+
     if (!g_watchState.imuOk) {
-        // The motion sensor is gone, so nothing is watching for a fall. Saying
-        // the monitor is on here would be a dangerous lie.
-        spr.fillRoundRect(38, 185, 164, 24, 12, UI_COLOR_CRITICAL);
+        spr.fillRoundRect(pillX, pillY, pillW, pillH, 13, UI_COLOR_CRITICAL);
         spr.setTextColor(UI_COLOR_WHITE, UI_COLOR_CRITICAL);
-        spr.drawString("MẤT CẢM BIẾN", SCREEN_CENTER_X, 197, 2);
+        spr.drawString("MẤT CẢM BIẾN", SCREEN_CENTER_X, pillY + 12, 2);
     } else if (g_watchState.fallState == FALL_STATE_NORMAL) {
-        spr.fillRoundRect(54, 185, 132, 24, 12, UI_COLOR_DARK_CARD);
-        spr.drawRoundRect(54, 185, 132, 24, 12, UI_COLOR_NORMAL);
+        spr.fillRoundRect(pillX, pillY, pillW, pillH, 13, UI_COLOR_DARK_CARD);
+        spr.drawRoundRect(pillX, pillY, pillW, pillH, 13, UI_COLOR_NORMAL);
         spr.setTextColor(UI_COLOR_NORMAL, UI_COLOR_DARK_CARD);
-        spr.drawString("THEO DÕI: BẬT", SCREEN_CENTER_X, 197, 2);
+        spr.drawString("THEO DÕI: BẬT", SCREEN_CENTER_X, pillY + 12, 2);
     } else {
-        spr.fillRoundRect(38, 185, 164, 24, 12, UI_COLOR_CRITICAL);
+        spr.fillRoundRect(pillX, pillY, pillW, pillH, 13, UI_COLOR_CRITICAL);
         spr.setTextColor(UI_COLOR_WHITE, UI_COLOR_CRITICAL);
-        spr.drawString("PHÁT HIỆN NGÃ", SCREEN_CENTER_X, 197, 2);
+        spr.drawString("PHÁT HIỆN NGÃ", SCREEN_CENTER_X, pillY + 12, 2);
     }
 }
