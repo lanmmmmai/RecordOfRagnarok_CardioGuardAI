@@ -129,8 +129,7 @@ void updateBLEService() {
         // to reach anyone, and the phone side has to raise the alarm.
         leashAlertSent = true;
         Serial.println(" [BLE] Phone out of range beyond leash timeout.");
-        queueAlertMessage("Dong ho da mat ket noi Bluetooth voi dien thoai qua lau. "
-                          "Nguoi deo co the da di ra xa.");
+        queueAlertMessage("⚠️ CẢNH BÁO MẤT KẾT NỐI\nĐồng hồ đã mất kết nối Bluetooth với điện thoại quá lâu. Người đeo có thể đã đi ra xa.");
     }
 
     if (millis() - lastNotify < 2000) return;

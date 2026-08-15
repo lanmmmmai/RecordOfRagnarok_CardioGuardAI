@@ -243,19 +243,16 @@ void updateAlertDispatcher() {
 
         char msg[256];
         snprintf(msg, sizeof(msg),
-                 // The recipient reads this on a phone, which renders UTF-8
-                 // fine, so the message carries full diacritics. The "F|" tag
-                 // is stripped before sending; it only marks the entry as the
-                 // fall alert for the dispatcher.
-                 "F|CẢNH BÁO TÉ NGÃ\n"
-                 "Thời gian: %02d:%02d:%02d %02d/%02d/%04d\n"
-                 "Nhịp tim: %s\n"
-                 "SpO2: %s\n"
-                 "Pin: %d%%",
+                 "F|🚨 CẢNH BÁO TÉ NGÃ KHẨN CẤP 🚨\n"
+                 "⏰ Thời gian: %02d:%02d:%02d - %02d/%02d/%04d\n"
+                 "❤️ Nhịp tim: %s\n"
+                 "🫁 SpO2: %s\n"
+                 "🔋 Pin: %d%%\n"
+                 "📍 Trạng thái: Cần hỗ trợ ngay lập tức!",
                  g_watchState.hour, g_watchState.minute, g_watchState.second,
                  g_watchState.day, g_watchState.month + 1, g_watchState.year,
-                 g_watchState.hrValid ? String(g_watchState.heartRateBPM).c_str() : "không đo được",
-                 g_watchState.spo2Valid ? String(g_watchState.spo2Percent).c_str() : "không đo được",
+                 g_watchState.hrValid ? (String(g_watchState.heartRateBPM) + " BPM").c_str() : "Không đo được",
+                 g_watchState.spo2Valid ? (String(g_watchState.spo2Percent) + "%").c_str() : "Không đo được",
                  g_watchState.batteryPercent);
 
         storePush(msg);
