@@ -52,6 +52,10 @@ static int bufferCount = 0;
 static uint8_t  decimateCount = 0;
 static uint32_t irAccum = 0, redAccum = 0;
 
+// Consecutive samples currently below the release threshold, while contact is
+// still considered present. Reset the moment a good sample arrives.
+static uint16_t contactGapSamples = 0;
+
 // Rolling AC/DC measurement for the signal-quality figure.
 static uint32_t irMin = 0xFFFFFFFF, irMax = 0;
 static unsigned long lastQualityCalc = 0;
@@ -200,14 +204,38 @@ void updateMAX30102Service() {
         g_watchState.irRaw = ir;
         g_watchState.redRaw = red;
 
-        if (ir < PPG_CONTACT_IR_THRESHOLD) {
+        // Contact is judged with hysteresis, and a brief dropout is tolerated
+        // before the window is thrown away.
+        //
+        // The SpO2 routine needs 100 consecutive slots at 25 Hz -- four seconds,
+        // which at 200 Hz means 800 raw samples in a row with not one of them
+        // dipping below the threshold. A single twitch used to reset the count
+        // to zero, so the window never filled and SpO2 never produced a number
+        // however long the finger stayed on.
+        if (ir < (g_watchState.skinContact ? PPG_CONTACT_IR_RELEASE
+                                           : PPG_CONTACT_IR_THRESHOLD)) {
             if (g_watchState.skinContact) {
-                g_watchState.skinContact = false;
-                resetMeasurement();
+                // Ride out short gaps. Only a sustained loss means the finger
+                // actually left; anything shorter is noise or a small shift in
+                // pressure, and discarding four seconds of good signal over it
+                // is what kept SpO2 permanently blank.
+                if (++contactGapSamples >= PPG_CONTACT_GAP_SAMPLES) {
+                    g_watchState.skinContact = false;
+                    contactGapSamples = 0;
+                    resetMeasurement();
+                }
             }
+            // Nothing is accumulated for this sample, so the partial average
+            // must not keep the slot it had started. Without this the next slot
+            // is divided by PPG_DECIMATE having summed fewer than that many
+            // samples, which reads as a falsely low DC baseline and skews the
+            // ratio the SpO2 figure is computed from.
+            decimateCount = 0;
+            irAccum = redAccum = 0;
             continue;
         }
         g_watchState.skinContact = true;
+        contactGapSamples = 0;
 
         if (ir < irMin) irMin = ir;
         if (ir > irMax) irMax = ir;
@@ -366,6 +394,15 @@ void updateMAX30102Service() {
             float dc = (float)irMin;
             float perfusion = (dc > 0.0f) ? (ac / dc) * 100.0f : 0.0f;
             g_watchState.signalQuality = (uint8_t)constrain((int)(perfusion * 50.0f), 0, 100);
+            // The scaled figure saturates: a finger on the sensor reads 100 for
+            // anything from a mediocre trace to a perfect one, so the number
+            // cannot be used to pick PPG_MIN_SQI. Print the raw perfusion index
+            // alongside it -- that one has a physiological range (roughly
+            // 0.5-2% at the wrist) and is what the multiplier above should be
+            // derived from once a real session has been logged.
+            Serial.printf(" [SQI] perfusion=%.3f%% -> scaled=%u (AC=%lu DC=%lu)\n",
+                          perfusion, g_watchState.signalQuality,
+                          (unsigned long)(irMax - irMin), (unsigned long)irMin);
         } else {
             g_watchState.signalQuality = 0;
         }
@@ -397,6 +434,13 @@ void updateMAX30102Service() {
             if (getRRFeatures(&rmssd, &pnn50, &ent)) {
                 Serial.printf(" [HRV] n=%u RMSSD=%.1fms pNN50=%.1f%% H=%.2f\n",
                               getRRCount(), rmssd, pnn50, ent);
+            } else {
+                // Say so rather than staying quiet. Silence here is ambiguous:
+                // it looks the same whether the buffer is still filling or the
+                // code never ran at all, and during a calibration session that
+                // difference is the whole point.
+                Serial.printf(" [HRV] n=%u -- still filling, need %d\n",
+                              getRRCount(), RR_MIN_INTERVALS);
             }
         }
     }

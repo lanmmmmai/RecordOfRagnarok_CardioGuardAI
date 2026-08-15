@@ -89,7 +89,25 @@
 // trial on the bench at the current setting, not from a fresh measurement.
 // Still provisional: log a session with the watch actually worn, then set this
 // midway between the open-air floor and the worn reading.
+// Measured on this unit, 2026-08-15: open air reads ~11,000, a finger on the
+// sensor reads 123,000-151,000. An order of magnitude apart, so 25,000 sits
+// comfortably in the gap and is now backed by a reading rather than a bench
+// guess.
 #define PPG_CONTACT_IR_THRESHOLD 25000UL
+
+// Contact is harder to lose than to gain. Once the finger is on, IR has to fall
+// well below the acquire threshold before contact is doubted -- pressing a
+// finger down is never perfectly steady, and the pulsatile component alone
+// swings the reading by a few percent every beat.
+#define PPG_CONTACT_IR_RELEASE   18000UL
+
+// How many consecutive sub-threshold samples mean the finger really left, as
+// opposed to a twitch. 100 samples at 200 Hz is half a second.
+//
+// This is what makes a four-second SpO2 window achievable at all: that window
+// is 800 raw samples, and requiring all 800 to be perfect is a standard no real
+// finger meets.
+#define PPG_CONTACT_GAP_SAMPLES  100
 
 // Above this accelerometer standard deviation (in g) the arm is moving too
 // much for the PPG waveform to mean anything.
