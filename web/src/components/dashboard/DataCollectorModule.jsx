@@ -1,65 +1,86 @@
-import React, { useState, useEffect } from 'react';
-import { Play, Pause, Tag, Download, Database, CheckCircle2, Clock, Activity, FileSpreadsheet, Zap } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Tag, Download, Database, Clock, Activity, FileSpreadsheet, Zap, Radio } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
-export default function DataCollectorModule({ simulatedBpm, onLogEvent }) {
-  // AUTO-RECORDING ACTIVE BY DEFAULT (Không cần bấm bắt đầu)
+export default function DataCollectorModule({ isConnected, rawTelemetry }) {
   const [isRecording, setIsRecording] = useState(true);
-  const [isPaused, setIsPaused] = useState(false);
   const [secondsElapsed, setSecondsElapsed] = useState(0);
-  const [samplesCount, setSamplesCount] = useState(1250); // Initial live telemetry samples
+  const [samplesCount, setSamplesCount] = useState(0);
   const [sessionTags, setSessionTags] = useState([]);
   const [sessionData, setSessionData] = useState([]);
 
-  // Continuous Automatic Data Accumulator
+  // Timer for duration
   useEffect(() => {
     let timer;
-    if (isRecording && !isPaused) {
+    if (isConnected && isRecording) {
       timer = setInterval(() => {
         setSecondsElapsed((prev) => prev + 1);
-        setSamplesCount((prev) => prev + 50); // 50Hz continuous sampling rate
-
-        const newRow = {
-          timestamp: new Date().toLocaleTimeString('vi-VN'),
-          bpm: simulatedBpm + (Math.floor(Math.random() * 5) - 2),
-          spO2: 98,
-          hrv: 52 + (Math.floor(Math.random() * 4) - 2),
-          accX: (Math.random() * 0.2 + 0.1).toFixed(2),
-          accY: (Math.random() * 0.2 + 0.9).toFixed(2),
-          accZ: (Math.random() * 0.2 + 0.1).toFixed(2),
-          aiRiskScore: 6,
-          activeTag: sessionTags.length > 0 ? sessionTags[sessionTags.length - 1].tag : 'Tự động ghi nhận (Auto)'
-        };
-
-        setSessionData((prev) => [...prev, newRow]);
       }, 1000);
     }
     return () => clearInterval(timer);
-  }, [isRecording, isPaused, simulatedBpm, sessionTags]);
+  }, [isConnected, isRecording]);
 
-  const handlePauseSession = () => {
-    setIsPaused(!isPaused);
-  };
+  // Continuous real-time packet ingestion (10Hz from WebSocket)
+  useEffect(() => {
+    if (!isConnected || !rawTelemetry || !isRecording) return;
+
+    setSamplesCount(prev => prev + 1);
+
+    const hasSkin = Boolean(rawTelemetry.skinContact);
+    const pulse = hasSkin && rawTelemetry.pulse > 0 ? rawTelemetry.pulse : 0;
+    const spo2 = hasSkin && rawTelemetry.spo2Valid && rawTelemetry.spo2 > 0 ? rawTelemetry.spo2 : 0;
+    const pi = hasSkin && rawTelemetry.quality ? ((rawTelemetry.quality / 50.0) * 1.2).toFixed(2) : "0.00";
+    const sqi = hasSkin ? (rawTelemetry.quality || 0) : 0;
+    const accX = rawTelemetry.accel ? (rawTelemetry.accel.x / 4096.0).toFixed(2) : "0.00";
+    const accY = rawTelemetry.accel ? (rawTelemetry.accel.y / 4096.0).toFixed(2) : "0.00";
+    const accZ = rawTelemetry.accel ? (rawTelemetry.accel.z / 4096.0).toFixed(2) : "0.00";
+    const gyroX = rawTelemetry.gyro?.x ?? 0;
+    const gyroY = rawTelemetry.gyro?.y ?? 0;
+    const gyroZ = rawTelemetry.gyro?.z ?? 0;
+
+    const newRow = {
+      timestamp: rawTelemetry.timestamp || new Date().toLocaleTimeString('vi-VN'),
+      pulse,
+      spo2,
+      pi,
+      sqi,
+      accX,
+      accY,
+      accZ,
+      gyroX,
+      gyroY,
+      gyroZ,
+      battery: rawTelemetry.battery || 0,
+      voltage: rawTelemetry.voltage || 0.0,
+      fallState: rawTelemetry.fallState === 0 ? "AN TOÀN" : "CẢNH BÁO",
+      activeTag: sessionTags.length > 0 ? sessionTags[sessionTags.length - 1].tag : 'Realtime Stream'
+    };
+
+    setSessionData(prev => {
+      const next = [newRow, ...prev];
+      return next.slice(0, 50); // Keep last 50 live frames in memory
+    });
+  }, [rawTelemetry, isConnected, isRecording, sessionTags]);
 
   const handleAddTag = (tagName) => {
     const newTag = {
       time: formatTime(secondsElapsed),
       tag: tagName,
-      bpmAtTag: simulatedBpm
+      bpmAtTag: rawTelemetry?.skinContact && rawTelemetry?.pulse > 0 ? rawTelemetry.pulse : 0
     };
     setSessionTags((prev) => [...prev, newTag]);
   };
 
   const handleExportSessionCSV = () => {
-    let csvContent = "data:text/csv;charset=utf-8,Timestamp,BPM,SpO2,HRV_ms,AccX_g,AccY_g,AccZ_g,AI_FallRiskScore,EventTag\n";
+    let csvContent = "data:text/csv;charset=utf-8,Timestamp,Pulse_BPM,SpO2_Percent,PI_Percent,SQI,AccX_g,AccY_g,AccZ_g,GyroX_dps,GyroY_dps,GyroZ_dps,Battery_Percent,Voltage_V,FallState,EventTag\n";
     sessionData.forEach((row) => {
-      csvContent += `${row.timestamp},${row.bpm},${row.spO2},${row.hrv},${row.accX},${row.accY},${row.accZ},${row.aiRiskScore},${row.activeTag}\n`;
+      csvContent += `${row.timestamp},${row.pulse},${row.spo2},${row.pi},${row.sqi},${row.accX},${row.accY},${row.accZ},${row.gyroX},${row.gyroY},${row.gyroZ},${row.battery},${row.voltage},${row.fallState},${row.activeTag}\n`;
     });
 
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `CardioGuardAI_AutoSessionData_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute("download", `SafeWatch_Realtime_Stream_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -85,37 +106,28 @@ export default function DataCollectorModule({ simulatedBpm, onLogEvent }) {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
         <div>
           <div className="flex items-center space-x-2">
-            <Zap className="w-5 h-5 text-emerald-400 animate-bounce" />
-            <h3 className="text-lg font-bold text-white">TỰ ĐỘNG THU THẬP DỮ LIỆU SINH HỌC LIÊN TỤC (AUTO-COLLECTOR)</h3>
-            <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-mono text-xs font-bold border border-emerald-500/30">
-              Tự Động Ghi Khi Đeo Đồng Hồ
+            <Radio className="w-5 h-5 text-emerald-400 animate-pulse" />
+            <h3 className="text-lg font-bold text-white">TRUYỀN VÀ THU THẬP THÔNG SỐ LIÊN TỤC (10Hz REALTIME STREAM)</h3>
+            <span className={`px-2.5 py-0.5 rounded-full font-mono text-xs font-bold border ${
+              isConnected ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-slate-800 text-slate-400 border-slate-700'
+            }`}>
+              {isConnected ? "🟢 10Hz Đang Truyền Dữ Liệu Thật" : "OFFLINE"}
             </span>
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
-            Không cần bấm bắt đầu — Hệ thống tự động lưu liên tục chuỗi dữ liệu Nhịp tim, SpO2, HRV & Gia tốc IMU để phục vụ báo cáo
+            Dữ liệu sinh hiệu và cảm biến từ đồng hồ được truyền về liên tục 10 lần/giây qua WebSocket & lưu trữ PostgreSQL
           </p>
         </div>
 
         {/* Action Controls */}
         <div className="flex items-center space-x-2">
           <button
-            onClick={handlePauseSession}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 ${
-              isPaused
-                ? 'bg-emerald-500 text-slate-950'
-                : 'glass-panel text-amber-300 border-amber-400/40 hover:text-white'
-            }`}
-          >
-            {isPaused ? <Play className="w-4 h-4 fill-current" /> : <Pause className="w-4 h-4 fill-current" />}
-            <span>{isPaused ? 'Tiếp tục ghi' : 'Tạm dừng ghi'}</span>
-          </button>
-
-          <button
             onClick={handleExportSessionCSV}
-            className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-xs rounded-xl shadow-lg flex items-center space-x-2 transition-all transform hover:scale-105"
+            disabled={sessionData.length === 0}
+            className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-xs rounded-xl shadow-lg flex items-center space-x-2 transition-all transform hover:scale-105 disabled:opacity-40"
           >
             <FileSpreadsheet className="w-4 h-4" />
-            <span>Tải CSV Dữ Liệu Tự Động Ghi ({sessionData.length})</span>
+            <span>Tải CSV Dữ Liệu Thật ({sessionData.length} dòng)</span>
           </button>
         </div>
       </div>
@@ -124,11 +136,11 @@ export default function DataCollectorModule({ simulatedBpm, onLogEvent }) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         
         <div className="glass-panel p-4 rounded-2xl border-l-4 border-l-emerald-400 bg-slate-950/80">
-          <span className="text-[10px] font-mono text-slate-400 uppercase block">TRẠNG THÁI GHI DỮ LIỆU</span>
+          <span className="text-[10px] font-mono text-slate-400 uppercase block">TRẠNG THÁI STREAM</span>
           <div className="flex items-center space-x-2 mt-1">
-            <span className={`w-3 h-3 rounded-full ${!isPaused ? 'bg-emerald-400 animate-ping' : 'bg-amber-400'}`} />
+            <span className={`w-3 h-3 rounded-full ${isConnected ? 'bg-emerald-400 animate-ping' : 'bg-slate-600'}`} />
             <span className="text-sm font-bold text-emerald-400 font-mono">
-              {!isPaused ? 'TỰ ĐỘNG GHI LIVE' : 'TẠM DỪNG'}
+              {isConnected ? 'LIÊN TỤC 10Hz' : 'CHƯA KẾT NỐI'}
             </span>
           </div>
         </div>
@@ -142,53 +154,74 @@ export default function DataCollectorModule({ simulatedBpm, onLogEvent }) {
         </div>
 
         <div className="glass-panel p-4 rounded-2xl border-l-4 border-l-rose-500 bg-slate-950/80">
-          <span className="text-[10px] font-mono text-slate-400 uppercase block">TỔNG MẪU ĐÃ LƯU TRỮ</span>
+          <span className="text-[10px] font-mono text-slate-400 uppercase block">GÓI TIN ĐÃ TRUYỀN VỀ</span>
           <div className="flex items-center space-x-1.5 mt-1">
             <Activity className="w-4 h-4 text-rose-400" />
-            <span className="text-lg font-black text-white font-mono">{samplesCount.toLocaleString()} samples</span>
+            <span className="text-lg font-black text-white font-mono">{samplesCount.toLocaleString()} frames</span>
           </div>
         </div>
 
         <div className="glass-panel p-4 rounded-2xl border-l-4 border-l-amber-400 bg-slate-950/80">
-          <span className="text-[10px] font-mono text-slate-400 uppercase block">TẦN SỐ THỜI GIAN THỰC</span>
+          <span className="text-[10px] font-mono text-slate-400 uppercase block">BĂNG THÔNG DỮ LIỆU</span>
           <div className="flex items-center space-x-1.5 mt-1">
-            <span className="text-lg font-black text-amber-300 font-mono">50Hz PPG • 100Hz IMU</span>
+            <span className="text-lg font-black text-amber-300 font-mono">10Hz Telemetry • 12 Fields</span>
           </div>
         </div>
 
       </div>
 
-      {/* Quick Event Tagging Section */}
-      <div className="space-y-3 pt-1">
-        <div className="flex items-center space-x-2">
-          <Tag className="w-4 h-4 text-amber-400" />
-          <h4 className="text-xs font-bold text-white uppercase tracking-wider">ĐÁNH DẤU NHÃN SỰ KIỆN TỨC THÌ (INSTANT EVENT MARKER)</h4>
+      {/* Live Continuous Telemetry Stream Table */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center space-x-2">
+            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+            <span>NHẬT KÝ GÓI TIN TRUYỀN VỀ LIÊN TỤC (LIVE STREAMING FRAMES)</span>
+          </h4>
+          <span className="text-[11px] font-mono text-slate-400">Hiển thị 50 gói tin gần nhất</span>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          {['Vận động nhẹ', 'Vận động mạnh', 'Uống thuốc tim', 'Nghỉ ngơi', 'Nhịp tim bất thường', 'Giả lập Té ngã'].map((tag, idx) => (
-            <button
-              key={idx}
-              onClick={() => handleAddTag(tag)}
-              className="px-3 py-1.5 rounded-xl glass-panel border border-slate-700 hover:border-cyan-400 text-xs font-medium text-slate-300 hover:text-white transition-all flex items-center space-x-1"
-            >
-              <span>+ {tag}</span>
-            </button>
-          ))}
+        <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-slate-950/90 max-h-72">
+          <table className="w-full text-left text-xs font-mono">
+            <thead className="sticky top-0 bg-slate-900 border-b border-slate-800 text-slate-400 uppercase text-[10px]">
+              <tr>
+                <th className="px-3 py-2.5">Thời gian</th>
+                <th className="px-3 py-2.5 text-rose-400">Nhịp Tim (BPM)</th>
+                <th className="px-3 py-2.5 text-cyan-300">SpO2 (%)</th>
+                <th className="px-3 py-2.5 text-emerald-400">Tưới Máu (PI%)</th>
+                <th className="px-3 py-2.5">SQI</th>
+                <th className="px-3 py-2.5 text-amber-300">Gia tốc (X, Y, Z)</th>
+                <th className="px-3 py-2.5">Pin / V</th>
+                <th className="px-3 py-2.5">Trạng Thái</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60">
+              {sessionData.length > 0 ? (
+                sessionData.map((row, idx) => (
+                  <tr key={idx} className="hover:bg-slate-800/40 transition-colors">
+                    <td className="px-3 py-2 text-slate-400">{row.timestamp}</td>
+                    <td className="px-3 py-2 font-bold text-rose-400">{row.pulse > 0 ? `${row.pulse} BPM` : '0'}</td>
+                    <td className="px-3 py-2 font-bold text-cyan-300">{row.spo2 > 0 ? `${row.spo2}%` : '0%'}</td>
+                    <td className="px-3 py-2 text-emerald-400">{row.pi}%</td>
+                    <td className="px-3 py-2 text-slate-300">{row.sqi}%</td>
+                    <td className="px-3 py-2 text-amber-300">{row.accX}, {row.accY}, {row.accZ} g</td>
+                    <td className="px-3 py-2 text-cyan-400">{row.battery}% ({row.voltage.toFixed(2)}V)</td>
+                    <td className="px-3 py-2">
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
+                        {row.fallState}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="8" className="text-center py-6 text-slate-500">
+                    {isConnected ? "Đang chờ nhận gói tin telemetry từ đồng hồ..." : "Đồng hồ chưa kết nối"}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
-
-        {/* Display Tagged List */}
-        {sessionTags.length > 0 && (
-          <div className="flex flex-wrap gap-2 pt-2">
-            {sessionTags.map((t, i) => (
-              <span key={i} className="px-2.5 py-1 rounded-lg bg-slate-800 text-cyan-300 text-[11px] font-mono border border-slate-700 flex items-center space-x-1">
-                <span className="text-slate-500">[{t.time}]</span>
-                <span className="font-bold">{t.tag}</span>
-                <span className="text-rose-400 font-bold">({t.bpmAtTag} BPM)</span>
-              </span>
-            ))}
-          </div>
-        )}
       </div>
 
     </div>
