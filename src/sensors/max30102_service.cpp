@@ -257,7 +257,12 @@ void updateMAX30102Service() {
             if (lastBeatSample == 0) {
                 // Beat 1: Record anchor timestamp
                 lastBeatSample = sampleIndex;
-                g_watchState.signalQuality = 90;
+                // No quality is asserted here. Perfusion is measured over a
+                // completed cardiac cycle, and this is the beat that starts the
+                // first one -- there is nothing yet to measure. This used to
+                // claim 90, which put the highest confidence figure the device
+                // can report at the moment it knows least.
+                g_watchState.signalQuality = 0;
                 g_watchState.spo2Valid = false;
             } else {
                 // Beat 2+: Compute true interval
