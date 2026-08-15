@@ -1,5 +1,7 @@
 #include "battery_monitor.h"
 
+#include "connectivity/alert_dispatcher.h"
+
 // GPIO1 is ADC1_CH0, so this reading is unaffected by Wi-Fi (only ADC2 is).
 //
 // The raw analogRead()/4095*3.3 formula it replaced is wrong on ESP32-S3: the
@@ -111,4 +113,45 @@ void updateBatteryMonitor() {
 
     g_watchState.isCharging = rising && filteredVoltage >= 4.15f;
     g_watchState.batteryPercent = lipoPercent(filteredVoltage);
+
+    checkLowBattery();
+}
+
+// Low-battery warning to the family group.
+//
+// Two thresholds, not one. A pack sitting at the boundary drifts a few tenths
+// of a percent either way with load and temperature, and a single threshold
+// would send a message on every crossing -- dozens of them over an evening.
+// The alert only re-arms once the pack has climbed clear of BATTERY_CLEAR_PCT.
+static bool lowBatteryNotified = false;
+
+// Measurements taken since boot. The filter starts from the very first reading,
+// so that reading has had no smoothing at all -- one noisy sample at power-on
+// could otherwise fire a low-battery alert on a full pack.
+static uint8_t readingsSeen = 0;
+
+void checkLowBattery() {
+    if (readingsSeen < BATTERY_WARN_MIN_READINGS) {
+        readingsSeen++;
+        return;
+    }
+
+    // On the charger the number is on its way up. Re-arm and stay quiet.
+    if (g_watchState.isCharging) {
+        lowBatteryNotified = false;
+        return;
+    }
+
+    if (!lowBatteryNotified && g_watchState.batteryPercent <= BATTERY_LOW_PCT) {
+        lowBatteryNotified = true;
+        char msg[128];
+        snprintf(msg, sizeof(msg),
+                 "⚠️ BÁO PIN YẾU: Đồng hồ chỉ còn %d%% pin (%.2fV). Vui lòng cắm sạc!",
+                 g_watchState.batteryPercent, filteredVoltage);
+        Serial.printf(" [BATTERY] Low battery at %d%%, alerting.\n",
+                      g_watchState.batteryPercent);
+        queueAlertMessage(String(msg));
+    } else if (g_watchState.batteryPercent >= BATTERY_CLEAR_PCT) {
+        lowBatteryNotified = false;
+    }
 }

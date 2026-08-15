@@ -59,6 +59,18 @@
 // nothing. See the reasoning in battery_monitor.cpp.
 #define BATTERY_CHARGE_RISE_V    0.010f
 
+// Low-battery warning. Two thresholds, not one: a pack resting on a single
+// boundary drifts across it repeatedly with load and temperature, and each
+// crossing would be another message to the family group.
+#define BATTERY_LOW_PCT          15
+#define BATTERY_CLEAR_PCT        20
+
+// Readings to discard at power-on before the warning may fire. The smoothing
+// filter is seeded from the first sample, so that sample carries no smoothing
+// at all -- one noisy reading at boot must not send a low-battery alert about
+// a full pack. At the 5 s battery tick this is a 20 s hold-off.
+#define BATTERY_WARN_MIN_READINGS 4
+
 // ---------------------------------------------------------------------------
 // Heart-rate sensing, wrist-worn
 // ---------------------------------------------------------------------------
