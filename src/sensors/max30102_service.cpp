@@ -14,6 +14,21 @@ static uint8_t rates[RATE_SIZE];
 static uint8_t rateIndex = 0;
 static unsigned long lastBeatMs = 0;
 
+// Samples pulled from the FIFO since the last reset, and the count at which the
+// previous beat landed.
+//
+// Beat timing used to come from millis() read at the moment the loop got around
+// to the sample -- but the loop runs every 20 ms and drains several samples per
+// pass, so every sample in one pass carried the SAME timestamp. That is ~20 ms
+// of jitter added to each RR interval, larger than the RMSSD the interval is
+// meant to reveal. The FIFO index is tied to when the SENSOR took the reading,
+// which is what the interval actually describes.
+static uint32_t sampleIndex = 0;
+static uint32_t lastBeatSample = 0;
+
+// 200 Hz. Keep in step with the sampleRate argument to particleSensor.setup().
+#define PPG_SAMPLE_PERIOD_MS 5.0f
+
 // Consecutive beats thrown out by the rate-of-change gate. Reaching
 // PPG_GATE_ESCAPE_BEATS forces the next one through; see the gate itself.
 static uint8_t gateRejections = 0;
@@ -71,6 +86,8 @@ static void resetMeasurement() {
     irAccum = redAccum = 0;
     rateIndex = 0;
     lastBeatMs = 0;
+    sampleIndex = 0;
+    lastBeatSample = 0;
     gateRejections = 0;
     memset(rates, 0, sizeof(rates));
     irMin = 0xFFFFFFFF;
@@ -152,6 +169,7 @@ void updateMAX30102Service() {
         uint32_t ir  = particleSensor.getFIFOIR();
         uint32_t red = particleSensor.getFIFORed();
         particleSensor.nextSample();
+        sampleIndex++;
 
         g_watchState.irRaw = ir;
         g_watchState.redRaw = red;
@@ -172,9 +190,12 @@ void updateMAX30102Service() {
         // reading is worse than no reading on a device someone relies on.
         if (!g_watchState.motionArtifact && checkForBeat(ir)) {
             unsigned long now = millis();
-            if (lastBeatMs > 0) {
-                unsigned long delta = now - lastBeatMs;
-                float bpm = 60000.0f / (float)delta;
+            if (lastBeatSample > 0) {
+                // Interval measured in samples, not milliseconds: see
+                // sampleIndex for why the clock is the wrong instrument here.
+                uint32_t deltaSamples = sampleIndex - lastBeatSample;
+                float deltaMs = (float)deltaSamples * PPG_SAMPLE_PERIOD_MS;
+                float bpm = 60000.0f / deltaMs;
                 if (bpm >= 45.0f && bpm <= 180.0f) {
                     // Reject beats that jump too far from the current reading:
                     // a mis-detected beat halves or doubles the interval, which
@@ -243,6 +264,9 @@ void updateMAX30102Service() {
                     }
                 }
             }
+            lastBeatSample = sampleIndex;
+            // Still kept: the stale-reading guard at the end of this function
+            // works in wall-clock time, not in samples.
             lastBeatMs = now;
         }
 
