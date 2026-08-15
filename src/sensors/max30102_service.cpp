@@ -103,40 +103,56 @@ static void updateMotionEstimate() {
     g_watchState.motionArtifact = sqrtf(var / MOTION_WINDOW) > PPG_MOTION_STD_G;
 }
 
-// Adaptive 200Hz Wrist PPG Peak Detector V2
-// Solves:
-// 1. Dynamic sensitivity for low-to-medium AC amplitudes (AC 400-3500)
-// 2. Refractory period of 450ms (90 samples at 200Hz) blocking dicrotic waves (355-415ms)
+// Adaptive 200 Hz wrist PPG peak detector.
+//
+// Every constant below is in app_config.h and every one of them was derived
+// from the session logged 2026-08-15 23:15-23:17, not from a textbook. The
+// numbers that session produced: AC amplitude 583-2524 at rest, DC around
+// 128,000-161,000, perfusion 0.26-2.6%.
 static float g_dcEst = 0.0f;
 static float g_prevAc = 0.0f;
-static float g_peakAc = 1000.0f;
+static float g_peakAc = PPG_PEAK_AC_FLOOR;
 static uint32_t g_samplesSinceBeat = 0;
 static bool g_rising = false;
 
 static bool detectBeatAdaptive(uint32_t ir) {
-    // 1. DC Exponential Moving Average
+    // Track the DC baseline. The time constant has to be LONGER than a heart
+    // beat, or the baseline chases the pulse itself and subtracts away the very
+    // signal being looked for. At alpha 0.05 it was 20 samples -- 100 ms
+    // against a beat lasting 600-1000 ms -- which flattened the trace until
+    // peaks no longer cleared any sensible threshold. That is what produced the
+    // three dropouts of 4.0 s, 4.2 s and 7.5 s in the 23:16 log.
     if (g_dcEst == 0.0f) g_dcEst = (float)ir;
-    g_dcEst = 0.95f * g_dcEst + 0.05f * (float)ir;
+    g_dcEst = (1.0f - PPG_DC_ALPHA) * g_dcEst + PPG_DC_ALPHA * (float)ir;
 
-    // 2. Highpass AC Signal
     float acSignal = (float)ir - g_dcEst;
 
-    // 3. Dynamic Threshold Tracking (decay to baseline)
-    g_peakAc *= 0.998f;
-    if (g_peakAc < 400.0f) g_peakAc = 400.0f;
-    if (acSignal > g_peakAc) {
-        g_peakAc = acSignal;
-    }
-    float threshold = g_peakAc * 0.25f;
+    // The detection threshold is a fraction of the recent peak, so it follows
+    // whatever amplitude this wrist, this pressure and this LED current happen
+    // to give. The floor stops the threshold collapsing to zero during a quiet
+    // stretch and turning sensor noise into beats; it is not a minimum beat
+    // size, which is the mistake the SparkFun window makes.
+    g_peakAc *= PPG_PEAK_DECAY;
+    if (g_peakAc < PPG_PEAK_AC_FLOOR) g_peakAc = PPG_PEAK_AC_FLOOR;
+    if (acSignal > g_peakAc) g_peakAc = acSignal;
+
+    float threshold = g_peakAc * PPG_PEAK_THRESHOLD_RATIO;
 
     g_samplesSinceBeat++;
 
-    // 4. Zero-Crossing Slope Peak Detection with 450ms (90 samples) Refractory Guard
+    // A beat is the sample where a rising edge turns over.
     bool beatDetected = false;
     if (acSignal > g_prevAc) {
         g_rising = true;
     } else if (g_rising && acSignal < g_prevAc) {
-        if (g_prevAc > threshold && g_prevAc > 150.0f && g_samplesSinceBeat >= 130) {
+        // The refractory guard exists to swallow the dicrotic notch, which
+        // follows its systolic peak by 355-415 ms. It must not be stretched
+        // far enough to swallow real beats too: at 130 samples it capped the
+        // reportable rate at 92.3 BPM, and the 23:16 log shows 6 of 30
+        // intervals landing on exactly 130 samples -- the ceiling being hit,
+        // not a pulse being measured. Amplitude is what rejects the dicrotic
+        // wave; time only has to cover the notch itself.
+        if (g_prevAc > threshold && g_samplesSinceBeat >= PPG_REFRACTORY_SAMPLES) {
             beatDetected = true;
             g_samplesSinceBeat = 0;
             g_peakAc = g_prevAc;
@@ -150,7 +166,7 @@ static bool detectBeatAdaptive(uint32_t ir) {
 static void resetMeasurement() {
     g_dcEst = 0.0f;
     g_prevAc = 0.0f;
-    g_peakAc = 2000.0f;
+    g_peakAc = PPG_PEAK_AC_FLOOR;
     g_samplesSinceBeat = 0;
     g_rising = false;
     bufferCount = 0;
@@ -428,8 +444,18 @@ void updateMAX30102Service() {
             } else {
                 g_watchState.spo2Valid = false;
             }
-// Removed Maxim fallback hr=125 bug
-
+            // The Maxim routine also returns a heart rate, and it used to be
+            // published here whenever the adaptive detector had nothing. That
+            // fallback is gone deliberately: the two run at different rates
+            // over different windows, so the displayed figure could switch
+            // between them mid-measurement with no way to tell which was
+            // showing. One detector, one number.
+            //
+            // (An earlier note here claimed the fallback produced a stuck
+            // "125 BPM". It did not -- the Maxim code returns -999 with its
+            // valid flag clear when it cannot find enough peaks, and the 125
+            // in the log was an IR count. The removal stands on the reason
+            // above, not on that one.)
 
             const int slide = FreqS;  // one second
             memmove(irBuffer,  irBuffer  + slide, (BUFFER_SIZE - slide) * sizeof(uint32_t));
