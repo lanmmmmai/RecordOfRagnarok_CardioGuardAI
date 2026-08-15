@@ -25,15 +25,24 @@ Mỗi dòng "Đang chạy" đều trỏ được tới file cụ thể.
 | Đo pin qua ADC — đường cong LiPo gấp khúc + phát hiện sạc theo xu hướng | ✅ Đang chạy | [battery_monitor.cpp](src/sensors/battery_monitor.cpp) |
 | **Hiệu chuẩn ngưỡng té ngã** | ⚠️ Chưa — toàn số phỏng đoán | [app_config.h §Fall](include/app_config.h) |
 | **DSP tầng 4** — trung vị + chặn 15 BPM/nhịp + van thoát | ✅ Đang chạy | [max30102_service.cpp](src/sensors/max30102_service.cpp) |
-| **DSP tầng 5** (Kalman + chặn hiển thị theo SQI) | ❌ Chưa triển khai | Kế hoạch: SPEC §11 |
-| **Lấy mẫu PPG 200 Hz** (hiện 25 Hz hiệu dụng) | ❌ Chưa triển khai | Kế hoạch: SPEC §11 |
+| **DSP tầng 5** — Kalman 1D + chặn hiển thị theo SQI | ✅ Đang chạy | [max30102_service.cpp](src/sensors/max30102_service.cpp) |
+| **Lấy mẫu PPG 200 Hz** + mốc nhịp từ chỉ số FIFO (5 ms) | ✅ Đang chạy | [max30102_service.cpp](src/sensors/max30102_service.cpp) |
+| **Đặc trưng HRV** — RMSSD / pNN50 / entropy Shannon | ✅ Đang chạy (chỉ ghi log, chưa cảnh báo) | [rr_analysis.cpp](src/dsp/rr_analysis.cpp) |
+| **Nút SOS vật lý** — BOOT / GPIO 0, giữ 1.5 s | ✅ Đang chạy | [sos_button.cpp](src/input/sos_button.cpp) |
+| **Cảnh báo pin yếu** ≤ 15%, nhả ở 20% | ✅ Đang chạy | [battery_monitor.cpp](src/sensors/battery_monitor.cpp) |
+| **Cảnh báo ngưỡng sinh lý** — HR > 130 / < 45, SpO₂ < 90 | ✅ Đang chạy | [vital_monitor.cpp](src/health/vital_monitor.cpp) |
 | **Mô hình TinyML** (té ngã + sàng lọc nhịp) | ❌ Chưa triển khai | Kế hoạch: SPEC §9 |
-| **Nút SOS vật lý, cảnh báo pin yếu, cảnh báo ngưỡng sinh lý** | ❌ Chưa triển khai | Kế hoạch: SPEC §11 |
 
 > ⚠️ **Chưa có mục nào trong bảng trên được kiểm chứng trên người đeo thật.** "Đang chạy"
-> nghĩa là code chạy được trên phần cứng, không phải là số đo đã đúng. Hai việc còn nợ:
-> hiệu chuẩn ngưỡng té ngã bằng thử nghiệm thả thật, và đối chiếu nhịp tim với thiết bị
-> tham chiếu.
+> nghĩa là code biên dịch sạch và chạy được trên phần cứng, **không** phải là số đo đã đúng.
+>
+> Còn nợ: hiệu chuẩn ngưỡng té ngã bằng thử nghiệm thả thật, đối chiếu nhịp tim với thiết bị
+> tham chiếu, đo đường cong pin bằng đồng hồ vạn năng, và đọc SQI thật để siết `PPG_MIN_SQI`
+> (đang để 20 — thấp có chủ ý vì thang chưa hiệu chuẩn).
+>
+> Đặc biệt lưu ý: Giai đoạn 6 vừa thêm **ba nguồn cảnh báo tự động gửi ra ngoài mà không cần
+> con người xác nhận** (pin yếu, HR, SpO₂). Chưa cái nào từng bắn thật — xem SPEC §11 mục 8b
+> để biết các kịch bản dương tính giả đã lường trước.
 
 **Danh sách hạn chế đầy đủ, xếp theo mức nghiêm trọng:**
 [SYSTEM_ARCHITECTURE_SPEC.md §11](SYSTEM_ARCHITECTURE_SPEC.md#11-hạn-chế-đã-biết--lộ-trình)
@@ -202,15 +211,19 @@ cảm ứng mỗi vòng · cảm biến 20 ms · vẽ 33 ms (~30 FPS) · pin + W
 | Giai đoạn | Nội dung |
 |---|---|
 | ~~0–3~~ | ~~Xử lý bí mật rò rỉ · đưa code vào repo · sửa lỗi té ngã · viết lại tài liệu~~ ✅ |
-| **3b** | Hiệu chuẩn ngưỡng té ngã bằng thử nghiệm thật (thả xuống đệm, đọc dòng quyết định trong log) |
-| **5** | DSP tầng 5 (Kalman + SQI) · nâng PPG lên 200 Hz để đo được khoảng RR |
-| **6** | Nút SOS vật lý · cảnh báo pin yếu · cảnh báo ngưỡng sinh lý |
+| ~~**5**~~ | ~~PPG 200 Hz · mốc nhịp từ FIFO · đặc trưng RR · DSP tầng 5~~ ✅ `v0.4-dsp-complete` |
+| ~~**6**~~ | ~~Nút SOS vật lý · cảnh báo pin yếu · cảnh báo ngưỡng sinh lý~~ ✅ `v0.5-features-complete` |
+| **3b** ⬅️ | **Kiểm chứng trên phần cứng thật — cần người có thiết bị.** Thả ~10 cú ngã, đối chiếu nhịp tim, đo pin bằng đồng hồ vạn năng, đọc SQI thật để siết `PPG_MIN_SQI` |
 | **7** | TinyML: cây quyết định té ngã (UMAFall/FallAllD + dữ liệu tự thu) · sàng lọc khoảng RR (MIT-BIH afdb) |
 | **8** | Đánh giá: ma trận nhầm lẫn, độ nhạy/đặc hiệu, ROC, so sánh với baseline 4 pha |
 | **4** | Chuyển framework sang `arduino, espidf` (làm sau cùng) |
 
+> **Toàn bộ phần việc làm được bằng phần mềm đã xong.** Giai đoạn 7 cần dữ liệu té ngã thu trên
+> thiết bị thật ở 3b; Giai đoạn 8 cần model của 7. Nút thắt bây giờ là **thiết bị vật lý**.
+
 Chi tiết kỹ thuật và lý do của từng hạng mục nằm ở
-[SYSTEM_ARCHITECTURE_SPEC.md §9 và §11](SYSTEM_ARCHITECTURE_SPEC.md).
+[SYSTEM_ARCHITECTURE_SPEC.md §9 và §11](SYSTEM_ARCHITECTURE_SPEC.md);
+từng bước thao tác ở [docs/KE_HOACH_TRIEN_KHAI.md](docs/KE_HOACH_TRIEN_KHAI.md).
 
 ---
 

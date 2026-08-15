@@ -84,7 +84,7 @@ Mọi giá trị dưới đây khớp `#define` trong [include/app_config.h](inc
 | **Cảm biến Nhịp tim** | MAX30102 | **I2C Bus 2** | **SDA=15, SCL=16** — addr `0x57` | **Module rời**, có sẵn trở kéo 4.7k trên module |
 | **Mạch đo Pin** | Phân áp trở | Analog Input | **GPIO 1** (ADC1) | Tỉ số phân áp **3.0** — xem §7 |
 | **Mạch sạc Pin** | ETA6096 | Hardware | Giắc **MX1.25 2P** | Tự sạc khi cắm USB Type-C |
-| **Nút BOOT** | Onboard | Digital Input | GPIO 0 (strapping) | **CHƯA TRIỂN KHAI** — không có `#define` nào cho GPIO 0 trong code |
+| **Nút BOOT** | Onboard | Digital Input | GPIO 0 (strapping) | ✅ Dùng làm nút SOS vật lý — `SOS_BUTTON_PIN`, giữ 1.5 s. Chỉ `pinMode()` ở **cuối** `setup()` |
 
 ### Ràng buộc nguồn điện
 
@@ -117,32 +117,48 @@ SparkFun chặn tới 250 ms) sẽ làm đứng hình cả giao diện lẫn b�
 
 ## 3. Chuỗi Xử lý Tín hiệu Nhịp tim & SpO2 tại Biên
 
-> **Trạng thái thật: tầng 1–4 đã có (tầng 4 vừa hoàn thiện van thoát). Tầng 5 CHƯA TRIỂN KHAI.**
+> **Trạng thái thật: cả 5 tầng đã có.** Tầng 5 (Kalman + chặn theo SQI) hoàn thành ở
+> Giai đoạn 5.4, chờ kiểm chứng trên phần cứng ở Giai đoạn 3b.
 > Mục này mô tả đúng những gì [src/sensors/max30102_service.cpp](src/sensors/max30102_service.cpp) đang làm.
 
 ### Tốc độ lấy mẫu thực tế
 
 ```cpp
-particleSensor.setup(MAX30102_LED_BRIGHTNESS, 4, 2, 100, 411, 4096);
-//                    brightness,  sampleAverage=4, ledMode=2, sampleRate=100Hz, ...
+particleSensor.setup(MAX30102_LED_BRIGHTNESS, 1, 2, 200, 411, 4096);
+//                    brightness,  sampleAverage=1, ledMode=2, sampleRate=200Hz, ...
 ```
 
-Cảm biến lấy **100 Hz** rồi **trung bình phần cứng 4 mẫu** → firmware chỉ nhận **25 Hz hiệu dụng**, tức **40 ms/mẫu**.
-Đây chính xác là tốc độ mà thuật toán SpO2 của Maxim yêu cầu (100 mẫu @ 25Hz), nên với SpO2 thì đủ.
-Nhưng với phân tích **khoảng RR** thì 40 ms là quá thô — xem §9 và §11.
+Cảm biến lấy **200 Hz, KHÔNG trung bình phần cứng** → **5 ms/mẫu**.
+
+Cấu hình cũ (100 Hz, trung bình 4) cho 40 ms/mẫu. Nghe thì đủ cho SpO2, và đúng là đủ —
+nhưng nó khiến phân tích khoảng RR **không thể thực hiện được**: RMSSD của người bình thường
+là 20–50 ms, tức sai số lượng tử hoá **bằng đúng cỡ đại lượng cần đo**.
+
+Thuật toán SpO2 của Maxim vẫn cần đúng 25 Hz (`FreqS` và `BUFFER_SIZE` là `#define`
+**bên trong thư viện SparkFun**, không sửa được). Firmware tự chia tần **bằng cách lấy
+trung bình 8 mẫu liên tiếp**, không phải lấy 1 trong 8:
+
+> Lấy mẫu thứ 8 (decimation by selection) sẽ gập toàn bộ thành phần trên 12.5 Hz
+> ngược trở lại đúng dải mà thuật toán SpO2 quan tâm — chính là hiện tượng aliasing.
+> Lấy trung bình thì làm suy giảm chúng.
 
 ```text
-[Tín hiệu thô MAX30102 @ 100Hz  --hardware average x4-->  25Hz hiệu dụng]
+[Tín hiệu thô MAX30102 @ 200Hz, không trung bình phần cứng — 5 ms/mẫu]
          │
-         ▼
+         ├─────> Dò nhịp + khoảng RR: dùng TOÀN BỘ 200 mẫu/giây
+         │
+         └─────> Trung bình 8 mẫu (PPG_DECIMATE) --> 25 Hz nuôi thuật toán SpO2
+         │
+         ▼  (nhánh dò nhịp, 200 Hz)
  1. TẦNG 1: Khử DC + lọc thông thấp   ✅ CÓ (nằm trong thư viện SparkFun)
     ──> `checkForBeat()` nội bộ chạy averageDCEstimator (khử thành phần một chiều)
         rồi lowPassFIRFilter. Đây KHÔNG phải code của dự án — dự án không tự
         viết bộ lọc IIR bandpass nào.
     ──> Lưu ý: không có chuyện "loại bỏ nhiễu đèn điện 50/60Hz" bằng bộ lọc số.
-        Nyquist của 25Hz chỉ là 12.5Hz, nên 50/60Hz đã bị aliasing TRƯỚC KHI bất kỳ
-        bộ lọc số nào nhìn thấy nó. Việc khử nhiễu đèn do mạch ALC của MAX30102
-        làm ở phần cứng.
+        Ở 200 Hz thì Nyquist là 100 Hz nên 50/60Hz KHÔNG còn bị aliasing như trước
+        — nhưng dự án vẫn không có bộ lọc notch nào để khử chúng. Việc đó do mạch
+        ALC của MAX30102 làm ở phần cứng. (Ở nhánh SpO2 sau khi chia tần xuống
+        25 Hz, phép trung bình 8 mẫu đóng vai trò bộ lọc chống aliasing.)
          │
          ▼
  2. TẦNG 2: Cổng chặn theo Cử động (Motion Gating)   ✅ CÓ
@@ -154,7 +170,13 @@ Nhưng với phân tích **khoảng RR** thì 40 ms là quá thô — xem §9 v�
          │
          ▼
  3. TẦNG 3: Dò đỉnh MIỀN THỜI GIAN   ✅ CÓ
-    ──> `checkForBeat(ir)` → đo khoảng giữa 2 nhịp bằng millis() → BPM = 60000/delta.
+    ──> `checkForBeat(ir)` → đo khoảng giữa 2 nhịp bằng CHỈ SỐ MẪU TRONG FIFO
+        × 5 ms → BPM = 60000/delta.
+    ──> KHÔNG dùng millis() nữa. Vòng lặp chạy mỗi 20 ms và mỗi lần rút nhiều mẫu
+        khỏi FIFO, nên mọi mẫu trong cùng một lượt đều mang CÙNG một mốc millis().
+        Đó là ~20 ms jitter cộng vào mỗi khoảng RR — lớn hơn cả RMSSD mà khoảng RR
+        sinh ra để đo. Chỉ số FIFO gắn với thời điểm CẢM BIẾN lấy mẫu, đúng thứ
+        mà khoảng RR mô tả.
     ──> Lọc thô: chỉ nhận 45 ≤ BPM ≤ 180. Bốn nhịp gần nhất chuyển sang Tầng 4.
     ──> ĐÂY KHÔNG PHẢI FFT. Không có biến đổi Fourier nào trong dự án. (Cố ý:
         FFT cần cửa sổ 8–16s, làm nhịp tim phản ứng chậm hẳn.)
@@ -168,12 +190,30 @@ Nhưng với phân tích **khoảng RR** thì 40 ms là quá thô — xem §9 v�
         thì bộ chặn tự khoá cứng chính mình.
          │
          ▼
- 5. TẦNG 5: Làm mịn Kalman 1D + Kiểm định SQI   ❌ CHƯA TRIỂN KHAI
-    ──> Kế hoạch: Kalman 1D (~10 dòng) + chặn hiển thị khi SQI dưới ngưỡng.
+ 5. TẦNG 5: Làm mịn Kalman 1D + Kiểm định SQI   ✅ CÓ
+    ──> Kalman vô hướng (~10 dòng, không thư viện) trên giá trị đã qua trung vị.
+        PPG_KALMAN_Q = 0.5 (nhiễu quá trình), PPG_KALMAN_R = 4.0 (nhiễu đo)
+        → hệ số Kalman xác lập ~0.28, tức nhận khoảng 1/4 mỗi số đo mới.
+    ──> Van thoát của Tầng 4 phải resync CẢ trạng thái Kalman. Nếu không, ước
+        lượng Kalman vẫn nằm ở giá trị bị kẹt và kéo trung vị kế tiếp quay về
+        đúng chỗ đó — van thoát vừa bật đã tự huỷ ngay nhịp sau.
+    ──> Chặn hiển thị: SQI < PPG_MIN_SQI thì hrValid và spo2Valid đều bị hạ.
+        Một con số tính đúng từ tín hiệu rác vẫn là con số sai.
          │
          ▼
 [Nhịp tim & SpO2 hiển thị Màn hình & Gửi Telegram]
+
+        ├─────> Đặc trưng HRV (src/dsp/rr_analysis.cpp)   ✅ CÓ
+                Vòng đệm 200 khoảng RR đã qua Tầng 4 → RMSSD, pNN50,
+                entropy Shannon. Đây là ĐẦU VÀO cho model sàng lọc
+                nhịp ở §9. Hiện chỉ in ra log mỗi 10 giây để quan sát,
+                CHƯA sinh cảnh báo nào.
 ```
+
+> **Ngưỡng `PPG_MIN_SQI` khởi điểm là 20, không phải 75.** Thang SQI ở đây là
+> `perfusion × 50` — một tỉ lệ **chưa hiệu chuẩn**, không phải phần trăm có nghĩa.
+> Đặt 75 ngay thì màn hình sẽ không bao giờ hiện số nào. Đọc SQI thật trong log ở
+> Giai đoạn 3b rồi mới siết dần.
 
 ### Van thoát của Tầng 4 — ĐÃ SỬA, chưa kiểm chứng trên phần cứng
 
@@ -412,8 +452,8 @@ Vùng an toàn của màn tròn: $x=20..220,\ y=20..220$.
     ▼                               ▼                               ▼
 Cảm ứng: Quick Menu        Lệnh từ điện thoại qua BLE      Nút Vật lý BOOT
 (Nút SOS đỏ, vùng chạm     (BLE_CHAR_COMMAND_UUID)         (GPIO 0, giữ 1.5s)
- x=40..86, y=104..148)                                     ❌ CHƯA TRIỂN KHAI
-    │                               │                               ✗
+ x=40..86, y=104..148)                                     ✅ ĐÃ CÓ
+    │                               │                               │
     └───────────────────────────────┴───────────────────────────────┘
                                     │
                                     ▼
@@ -427,9 +467,19 @@ Cảm ứng: Quick Menu        Lệnh từ điện thoại qua BLE      Nút V�
 - Nút SOS trong Quick Menu → `triggerSimulatedFall()` ([ui_manager.cpp](src/ui/ui_manager.cpp)).
 - Lệnh SOS từ app điện thoại qua BLE ([ble_service.cpp](src/connectivity/ble_service.cpp)).
 - SOS thủ công **bỏ qua toàn bộ 4 pha xác nhận** — người đeo đã tự yêu cầu giúp đỡ thì không cần máy xác nhận nữa.
+- **Nút vật lý BOOT (GPIO 0), giữ 1.5 giây** ([src/input/sos_button.cpp](src/input/sos_button.cpp)).
+  Màn hình cảm ứng đã có nút SOS, nhưng người vừa ngã có thể không nhìn được màn hình,
+  không nhắm trúng vùng chạm, hoặc không dùng được tay bên có đồng hồ. Một cái nút tìm
+  được bằng cảm giác và bấm được bằng khớp ngón tay là **một năng lực khác**, không phải bản sao.
+
+  > ⚠️ **GPIO 0 là chân strapping.** Mức của nó lúc reset quyết định ESP32 vào chế độ nạp
+  > hay chạy firmware. `initSOSButton()` được đặt ở **dòng cuối cùng của `setup()`** một cách
+  > có chủ ý — chạm vào chân này sớm hơn là can thiệp vào quyết định đó.
+
+  Mỗi lần giữ chỉ bắn **đúng một** cảnh báo. Người đang hoảng sẽ bóp chặt nút và giữ nguyên;
+  thiếu cờ chặn thì cứ vài mili-giây lại xếp thêm một cảnh báo vào hàng đợi.
 
 **CHƯA TRIỂN KHAI:**
-- ❌ **Nút vật lý BOOT (GPIO 0)** — không có `#define` nào cho GPIO 0. Khi làm: GPIO 0 là **chân strapping**, chỉ được đọc **sau khi `setup()` chạy xong**, không được đọc lúc khởi động.
 - ❌ **Nhấn giữ màn hình HOME 3 giây** — không có mã xử lý long-press nào trong [cst816s_service.cpp](src/sensors/cst816s_service.cpp).
 
 ### 🔴 Đường BLE không có xác thực
@@ -509,11 +559,57 @@ isCharging = (ΔV qua 2 phút ≥ 10 mV)  AND  (V ≥ 4.15)
 Khi pin sạc đầy nó ngừng leo → cờ `isCharging` tắt, phần trăm đọc 100% từ đường cong. Đó là mô tả
 trung thực: đồng hồ biết **pin đầy**, chứ không khẳng định **đang có dòng nạp**.
 
-### Cảnh báo Pin yếu — ❌ CHƯA TRIỂN KHAI
+### Cảnh báo Pin yếu — ✅ ĐÃ CÓ
 
-Thiết kế dự kiến (Giai đoạn 6): ngưỡng ≤ 15%, biểu tượng pin nhấp nháy đỏ, gửi **một tin duy nhất** về Telegram Gia đình, cờ chỉ reset khi pin vượt trở lại 20% (chống spam khi pin dao động quanh ngưỡng).
+`checkLowBattery()` trong [battery_monitor.cpp](src/sensors/battery_monitor.cpp), chạy cùng
+chu kỳ 5 giây với phép đo pin.
 
-*`"⚠️ BÁO PIN YẾU: Đồng hồ của [Tên] chỉ còn 15% pin. Vui lòng cắm sạc!"`*
+**Hai ngưỡng chứ không phải một** (`BATTERY_LOW_PCT = 15`, `BATTERY_CLEAR_PCT = 20`).
+Một cục pin nằm đúng trên ranh giới sẽ trôi qua lại vài phần mười phần trăm theo tải và
+nhiệt độ; với một ngưỡng duy nhất thì **mỗi lần trôi qua là thêm một tin nhắn** vào nhóm
+gia đình — hàng chục tin trong một buổi tối. Cờ chỉ nạp lại khi pin vượt 20%, hoặc ngay khi
+phát hiện đang sạc.
+
+**Bỏ qua 4 lần đo đầu sau khởi động** (`BATTERY_WARN_MIN_READINGS`, ~20 giây). Bộ lọc mũ
+được gieo mầm bằng chính mẫu đầu tiên, nên mẫu đó **hoàn toàn chưa được lọc** — một lần đọc
+nhiễu lúc bật máy không được phép gửi cảnh báo pin yếu về một cục pin đang đầy.
+
+*`"⚠️ BÁO PIN YẾU: Đồng hồ chỉ còn 15% pin (3.68V). Vui lòng cắm sạc!"`*
+
+> Ngưỡng 15% chỉ đúng bằng mức đường cong điện áp đúng. Đường cong hiện **chưa hiệu chuẩn**
+> trên cell thật — xem Giai đoạn 3b.
+
+---
+
+## 7b. Cảnh báo Ngưỡng Sinh lý — ✅ ĐÃ CÓ
+
+[src/health/vital_monitor.cpp](src/health/vital_monitor.cpp)
+
+| Điều kiện | Ngưỡng | Hằng số |
+|---|---|---|
+| Nhịp tim cao | > 130 BPM | `VITAL_HR_HIGH` |
+| Nhịp tim thấp | < 45 BPM | `VITAL_HR_LOW` |
+| SpO2 thấp | < 90% | `VITAL_SPO2_LOW` |
+
+**Ba điều kiện độc lập, mỗi cái một đồng hồ đếm riêng và một khoảng nghỉ riêng.** Dùng chung
+một đồng hồ sẽ khiến một cơn nhịp nhanh thoáng qua reset bộ đếm của một đợt tụt SpO2 đang
+diễn ra — mà tụt SpO2 mới là cái nghiêm trọng hơn.
+
+- **Phải duy trì liên tục `VITAL_SUSTAIN_MS` = 5 giây.** Một lần đọc lệch không phải là một
+  sự kiện y tế; bộ đếm về 0 ngay khi điều kiện hết đúng.
+- **Không nhắc lại trong `VITAL_REPEAT_MS` = 10 phút.** Người có SpO2 nằm ở 88% suốt một
+  tiếng cần được giúp, không cần bảy trăm tin nhắn giống hệt nhau — và một nhóm chat bị
+  ngập là một nhóm chat người ta thôi đọc.
+- **Chỉ chạy khi số đáng tin:** `hrValid` **và** `signalQuality ≥ PPG_MIN_SQI` **và** có tiếp
+  xúc da. Riêng SpO2 đòi thêm `!motionArtifact`.
+
+> **Đây là lý do mục này bắt buộc phải làm SAU Tầng 5.** Trước khi có Kalman và bộ chặn theo
+> SQI, số hiển thị có thể nhảy lên 180 chỉ vì vung tay — cảnh báo dựng trên đó sẽ báo cấp cứu
+> tim mạch mỗi lần người đeo vẫy tay. **Một cảnh báo y tế sai còn tệ hơn không có cảnh báo:**
+> nó dạy người ta bỏ qua cái tiếp theo.
+
+Tin nhắn SpO2 nói thẳng rằng số đo ở cổ tay chỉ mang tính tham khảo và cần đo lại bằng máy
+kẹp ngón tay. Đây **không phải thiết bị chẩn đoán y tế**.
 
 ---
 
@@ -626,17 +722,26 @@ theo cách này là sai về nguyên lý, không phải chuyện tinh chỉnh đ
 bất kể đo bằng điện hay bằng ánh sáng. Train trên khoảng RR trích từ `afdb`, rồi suy luận trên khoảng RR trích từ PPG,
 là **hợp lệ về mặt vật lý**. Đây cũng là cách y văn làm chuẩn, và là cách Apple Watch / Fitbit sàng lọc rung nhĩ.
 
-**🔴 ĐIỀU KIỆN TIÊN QUYẾT BẮT BUỘC — độ phân giải khoảng RR:**
+**✅ ĐIỀU KIỆN TIÊN QUYẾT — đã hoàn thành ở Giai đoạn 5:**
 
-| | Hiện tại | Cần có |
+| | Trước Giai đoạn 5 | Hiện tại |
 |---|---|---|
-| Tốc độ mẫu PPG hiệu dụng | 25 Hz | **200 Hz** |
-| Lượng tử hoá khoảng RR | **40 ms** | **5 ms** |
-| Nguồn mốc thời gian | `millis()` lúc **vòng lặp chạy** ([max30102_service.cpp](src/sensors/max30102_service.cpp)) → **+20 ms jitter** | Suy từ **chỉ số mẫu trong FIFO × chu kỳ mẫu** |
+| Tốc độ mẫu PPG hiệu dụng | 25 Hz | **200 Hz** ✅ |
+| Lượng tử hoá khoảng RR | **40 ms** | **5 ms** ✅ |
+| Nguồn mốc thời gian | `millis()` lúc **vòng lặp chạy** → **+20 ms jitter** | **Chỉ số mẫu trong FIFO × 5 ms** ✅ |
+| Đặc trưng HRV | không có | `RMSSD`, `pNN50`, entropy — [src/dsp/rr_analysis.cpp](src/dsp/rr_analysis.cpp) ✅ |
 
-`RMSSD` của người bình thường nằm trong khoảng **20–50 ms**. Với lượng tử hoá 40 ms, **sai số đo lớn bằng đúng
-đại lượng cần đo** — mọi con số RMSSD tính ra ở cấu hình hiện tại đều vô nghĩa. **Phải hoàn thành nâng cấp 200Hz
-(Giai đoạn 5 / Phần B) trước khi bắt đầu nhánh này.**
+`RMSSD` của người bình thường nằm trong khoảng **20–50 ms**. Với lượng tử hoá 40 ms cũ, **sai số đo lớn bằng đúng
+đại lượng cần đo** — mọi con số RMSSD tính ra ở cấu hình cũ đều vô nghĩa. Nay đã xuống 5 ms.
+
+**Vòng đệm RR nén nửa khi đầy, không cuộn vòng.** Vòng đệm cuộn (ring buffer) rẻ hơn, nhưng RMSSD
+dựng từ hiệu **hai khoảng kề nhau** — điểm cuộn sẽ tạo ra một hiệu rác giữa khoảng mới nhất và
+khoảng cũ nhất, **mỗi vòng một lần**. Nén giữ mảng đúng thứ tự thời gian, đổi lại một `memmove`
+sau mỗi trăm nhịp.
+
+Lịch sử RR bị **xoá sạch mỗi khi mất tiếp xúc da**: một khoảng bắc qua quãng thời gian cảm biến
+rời khỏi cổ tay không phải là một khoảng giữa hai nhịp tim — nó sẽ vào cửa sổ như một ngoại lai
+khổng lồ và kéo RMSSD lên suốt cả trăm nhịp sau đó.
 
 **🔴 Phụ thuộc DSP Tầng 4+5:** một nhịp bị bỏ sót tạo ra khoảng RR **gấp đôi** — nhìn y hệt rung nhĩ.
 Cảnh báo này bắn thẳng vào nhóm Telegram gia đình, nên phải lọc sạch số ảo trước.
@@ -649,14 +754,17 @@ A4 (log FALLCSV)  ────────────────────�
 B1a (median + chặn 15 BPM/nhịp) ✅ ĐÃ CÓ ─┐
 B1b (van thoát 8 nhịp)          ✅ ĐÃ CÓ ─┴─> Tầng 4 ─┐
                                                       ├─> 9.2  Sàng lọc khoảng RR
-B2  (Kalman + chặn theo SQI)    ❌ THIẾU ──> Tầng 5 ──┤
+B2  (Kalman + chặn theo SQI)    ✅ ĐÃ CÓ ──> Tầng 5 ──┤
                                                       │
-B0  (PPG 200 Hz + mốc từ FIFO)  ❌ THIẾU ─────────────┘
+B0  (PPG 200 Hz + mốc từ FIFO)  ✅ ĐÃ CÓ ─────────────┤
+                                                      │
+B3  (RMSSD / pNN50 / entropy)   ✅ ĐÃ CÓ ─────────────┘
 ```
 
-> Đọc sơ đồ: 9.2 **chưa thể bắt đầu** — còn thiếu B0 và B2.
-> B0 là điều kiện tiên quyết cứng (độ phân giải 40 ms không đo nổi RMSSD 20–50 ms);
-> B2 là điều kiện về độ sạch (một nhịp sai làm khoảng RR gấp đôi → dương tính giả rung nhĩ).
+> Đọc sơ đồ: **mọi phụ thuộc firmware của 9.2 đã xong.** Phần còn lại là công việc phía
+> máy tính — tải `afdb`, trích khoảng RR, huấn luyện model, xuất C thuần. Đặc trưng đã
+> chạy trên thiết bị và in ra log mỗi 10 giây, nhưng **chưa sinh cảnh báo nào**: chỉ được
+> nối vào cảnh báo sau khi model đã có kết quả đánh giá ở §Giai đoạn 8.
 
 ---
 
@@ -691,6 +799,12 @@ RecordOfRagnarok_CardioGuardAI/
 │   │   ├── qmi8658_service.cpp         # IMU raw I2C, ±8g @ 250Hz
 │   │   ├── cst816s_service.cpp         # Cảm ứng, cổng bằng ngắt
 │   │   └── battery_monitor.cpp         # ADC hiệu chuẩn, phân áp 3.0 (§7)
+│   ├── dsp/
+│   │   └── rr_analysis.cpp             # Vòng đệm khoảng RR -> RMSSD/pNN50/entropy (§3, §9.2)
+│   ├── health/
+│   │   └── vital_monitor.cpp           # Cảnh báo ngưỡng HR / SpO2 (§7b)
+│   ├── input/
+│   │   └── sos_button.cpp              # Nút BOOT (GPIO 0) làm SOS vật lý (§6)
 │   ├── fall_detection/
 │   │   └── fall_detector.cpp           # Thuật toán 4 pha, 2 đường vào (§4)
 │   ├── connectivity/
@@ -741,9 +855,12 @@ trên tính năng cốt lõi nhất của sản phẩm.
 
 ### 🟠 Cao
 
-**2. PPG 25 Hz không đủ cho phân tích khoảng RR.** 40 ms lượng tử hoá so với RMSSD 20–50 ms → sai số bằng chính
-đại lượng đo. Cộng thêm ~20 ms jitter do lấy mốc bằng `millis()` lúc vòng lặp chạy thay vì lúc mẫu được lấy.
-**Chặn hoàn toàn §9.2.** Khắc phục: Giai đoạn 5 / Phần B — nâng 200 Hz + suy mốc thời gian từ chỉ số FIFO.
+**2. PPG 25 Hz không đủ cho phân tích khoảng RR — ĐÃ SỬA, chưa kiểm chứng trên người đeo.**
+40 ms lượng tử hoá so với RMSSD 20–50 ms → sai số bằng chính đại lượng đo, cộng thêm ~20 ms
+jitter do lấy mốc bằng `millis()` lúc vòng lặp chạy thay vì lúc mẫu được lấy. Nay cảm biến chạy
+**200 Hz không trung bình phần cứng** (5 ms/mẫu) và mốc nhịp suy từ **chỉ số mẫu trong FIFO**.
+SpO2 vẫn được nuôi ở 25 Hz bằng cách **lấy trung bình** 8 mẫu (không phải lấy 1 trong 8 — xem §3).
+Còn lại: xác nhận trên người đeo rằng RMSSD rơi vào dải sinh lý 20–60 ms khi ngồi yên.
 
 **3. Số nhịp ảo — ĐÃ XỬ LÝ, chưa kiểm chứng trên người đeo.** Dải hợp lệ siết còn
 `45 ≤ BPM ≤ 180`, thêm trung vị thật, bộ chặn 15 BPM/nhịp và van thoát 8 nhịp. Lần sửa đầu
@@ -751,7 +868,16 @@ tiên của bộ chặn từng tạo ra một lỗi 🔴 nặng hơn (nhịp tim
 đã đóng lỗ đó — diễn giải đầy đủ: [§3](#3-chuỗi-xử-lý-tín-hiệu-nhịp-tim--spo2-tại-biên).
 Còn lại: đo trên người đeo thật để chỉnh `PPG_MAX_BPM_STEP` nếu dòng resync xuất hiện quá dày.
 
-**4. DSP Tầng 5 chưa tồn tại** (Kalman + chặn hiển thị theo SQI). Xem §3.
+**4. DSP Tầng 5 — ĐÃ CÓ, chưa kiểm chứng trên phần cứng.** Kalman vô hướng trên giá trị đã qua
+trung vị, cộng bộ chặn hiển thị theo SQI. Xem §3.
+
+Một chi tiết dễ bỏ sót và đã được xử lý: **van thoát của Tầng 4 phải resync cả trạng thái
+Kalman**. Nếu không, ước lượng Kalman vẫn nằm ở giá trị bị kẹt và kéo trung vị kế tiếp quay về
+đúng chỗ đó — van thoát vừa bật xong đã tự huỷ ngay ở nhịp sau, và cứ thế lặp mãi mà không bao
+giờ thoát được.
+
+Còn lại: `PPG_MIN_SQI` đang để **20**, một con số khởi điểm thấp có chủ ý vì thang SQI chưa
+hiệu chuẩn. Phải đọc SQI thật trong log ở Giai đoạn 3b rồi siết dần.
 
 **4b. Đồng hồ đỗ vĩnh viễn ở màn hình cảnh báo — ĐÃ SỬA, chưa kiểm chứng.**
 
@@ -799,11 +925,32 @@ Nhưng chúng được chỉnh theo tiêu chí "hết báo số ảo khi hở s�
 khi đeo — và comment giải thích trong [app_config.h](include/app_config.h) vẫn là bằng chứng đo ở mức LED cũ
 `0x5F`, cần đo lại rồi viết lại.
 
-**8. Tính năng còn thiếu** (Giai đoạn 6 / Phần C):
-- ❌ Nút SOS vật lý BOOT (GPIO 0) — §6
-- ❌ Cảnh báo pin yếu ≤ 15% — §7
-- ❌ Cảnh báo ngưỡng sinh lý (HR > 130 / < 45, SpO2 < 90) — **phải làm sau Tầng 5**, không thì spam cảnh báo từ số rác
-- ❌ Nhấn giữ HOME 3 giây để SOS — §6
+**8. Tính năng của Giai đoạn 6 / Phần C — ĐÃ XONG, chưa kiểm chứng trên phần cứng:**
+- ✅ Nút SOS vật lý BOOT (GPIO 0), giữ 1.5 s — §6
+- ✅ Cảnh báo pin yếu ≤ 15%, nhả ở 20%, bỏ qua 4 lần đo đầu — §7
+- ✅ Cảnh báo ngưỡng sinh lý (HR > 130 / < 45, SpO2 < 90), duy trì 5 s, nghỉ 10 phút — §7b
+
+**Vẫn còn thiếu:**
+- ❌ Nhấn giữ HOME 3 giây để SOS — §6 (nút BOOT đã phủ được nhu cầu này nên ưu tiên thấp)
+- ❌ Đặc trưng HRV mới chỉ in ra log, **chưa nối vào cảnh báo nào** — đúng như thiết kế, phải
+  chờ model của Giai đoạn 7 và kết quả đánh giá của Giai đoạn 8
+
+**8b. Ba nguồn cảnh báo tự động mới đều CHƯA từng bắn thật.** Giai đoạn 6 thêm ba đường gửi tin
+ra nhóm gia đình mà **không cần con người xác nhận**: pin yếu, HR ngoài ngưỡng, SpO2 thấp.
+Trước đó chỉ có té ngã và SOS thủ công.
+
+Rủi ro cụ thể, xếp theo khả năng xảy ra:
+
+| Nguồn | Kịch bản dương tính giả | Đã có gì chặn |
+|---|---|---|
+| Pin yếu | Đường cong điện áp chưa hiệu chuẩn → "15%" không phải 15% thật | Hysteresis + bỏ qua 4 lần đo đầu |
+| HR cao | Người đeo tập thể dục 5 phút liên tục | Ngưỡng 130 khá cao; nghỉ 10 phút |
+| SpO2 thấp | Đo ở cổ tay vốn kém tin cậy hơn kẹp ngón tay | `PPG_MIN_SQI` + `!motionArtifact` + câu miễn trừ trong tin nhắn |
+
+**Phải quan sát log ít nhất một ngày đeo thật trước khi tin vào chúng.** Đặc biệt cảnh báo HR
+cao khi tập thể dục là dương tính giả *đúng luật* — ngưỡng hiện tại không phân biệt được
+"nhịp nhanh vì gắng sức" với "nhịp nhanh vì bệnh lý". Muốn phân biệt phải dùng thêm tín hiệu
+gia tốc, và đó là việc chưa làm.
 
 **9. `client.setInsecure()`** ([alert_dispatcher.cpp](src/connectivity/alert_dispatcher.cpp)) — kết nối TLS
 **không xác thực chứng chỉ máy chủ**. Dữ liệu vẫn được mã hoá, nhưng thiết bị không kiểm tra nó đang nói chuyện
@@ -817,6 +964,8 @@ false, false)` + `IO_NO_INPUT_OUTPUT` (Just Works, không ghép cặp). Bất k�
 dùng thật. Chi tiết và hướng khắc phục: [BLE_PROTOCOL.md](BLE_PROTOCOL.md) §6.
 
 **11. Toàn bộ §9 TinyML chưa tồn tại.** Không có model, không có `ai_models/`, không có `esp-tflite-micro`.
+Riêng phần **đầu vào** cho §9.2 thì đã xong: đặc trưng RMSSD/pNN50/entropy chạy trên thiết bị và
+in ra log. Phần thiếu là công việc phía máy tính (tải `afdb`, huấn luyện, xuất C thuần).
 
 **12. Phụ thuộc phần cứng nối dây tay.** MAX30102 là module rời nối bằng dây (§2). Đây là điểm hỏng cơ khí có thật —
 `checkSensorAlive()` tồn tại chính vì lý do đó.
@@ -833,8 +982,10 @@ dùng thật. Chi tiết và hướng khắc phục: [BLE_PROTOCOL.md](BLE_PROTO
 | Cảnh báo | Gửi được tin thật một lần | Kiểm chứng đường mất mạng: hàng đợi NVS, retry, khôi phục sau reboot |
 | Diễn đạt | "sàng lọc / gợi ý", có miễn trừ | "sàng lọc / gợi ý", có miễn trừ **+ hướng dẫn sử dụng rõ ràng** |
 
-**Trạng thái hiện tại: đang ở giữa hai mức.** Code chạy thật trên phần cứng thật, nhưng lỗi 🔴 vừa sửa chưa được
-kiểm chứng, và các ngưỡng vẫn là số phỏng đoán.
+**Trạng thái hiện tại: đang ở giữa hai mức, và khoảng cách bây giờ hoàn toàn nằm ở việc kiểm chứng.**
+Toàn bộ phần việc viết được bằng phần mềm đã xong — cả 5 tầng DSP, cả 3 tính năng của Giai đoạn 6,
+và mọi lỗi 🔴 đã sửa trong code. Nhưng **chưa có gì trong số đó chạy trên cổ tay người thật**, và
+mọi ngưỡng vẫn là số phỏng đoán. Đó chính xác là những gì Giai đoạn 3b sinh ra để giải quyết.
 
 ---
 
@@ -848,13 +999,18 @@ kiểm chứng, và các ngưỡng vẫn là số phỏng đoán.
 | 2 | Viết lại tài liệu cho đúng sự thật | ✅ Xong (tài liệu này) |
 | 2b | README, `BLE_PROTOCOL.md`, cho `.CLAUDE/Plan/` nghỉ hưu | ✅ Xong |
 | 5a | Van thoát Tầng 4 (`PPG_GATE_ESCAPE_BEATS`) | ✅ Xong code, ⏳ chờ kiểm chứng |
-| 5 (Phần B) | DSP Tầng 5 (Kalman + chặn theo SQI) + nâng PPG 200 Hz | ⏳ Kế tiếp |
-| 6 (Phần C) | Nút SOS BOOT, cảnh báo pin yếu, cảnh báo ngưỡng sinh lý | ⏳ |
-| 7 (Phần D) | TinyML: cây té ngã + sàng lọc khoảng RR | ⏳ |
-| 8 | Đánh giá: ma trận nhầm lẫn, độ nhạy/đặc hiệu, ROC, so với baseline 4 pha | ⏳ |
+| 5 (Phần B) | PPG 200 Hz + mốc từ FIFO + đặc trưng RR + Tầng 5, tag `v0.4-dsp-complete` | ✅ Xong code, ⏳ chờ kiểm chứng |
+| 6 (Phần C) | Nút SOS BOOT, cảnh báo pin yếu, cảnh báo ngưỡng sinh lý, tag `v0.5-features-complete` | ✅ Xong code, ⏳ chờ kiểm chứng |
+| **3b** | **Kiểm chứng trên phần cứng thật — CẦN NGƯỜI CÓ THIẾT BỊ** | ⏳ **Kế tiếp** |
+| 7 (Phần D) | TinyML: cây té ngã + sàng lọc khoảng RR | ⏳ Chặn bởi 3b |
+| 8 | Đánh giá: ma trận nhầm lẫn, độ nhạy/đặc hiệu, ROC, so với baseline 4 pha | ⏳ Chặn bởi 7 |
 | 4 | Đổi `framework = arduino, espidf` (nhánh riêng, **làm sau cùng**) | ⏳ |
+
+> **Toàn bộ phần việc làm được bằng phần mềm đã xong.** Mọi thứ còn lại đều bắt đầu từ Giai đoạn 3b:
+> Giai đoạn 7 cần dữ liệu té ngã thu trên thiết bị thật, Giai đoạn 8 cần model của Giai đoạn 7.
+> Chi tiết từng bước kiểm chứng: [docs/KE_HOACH_TRIEN_KHAI.md](docs/KE_HOACH_TRIEN_KHAI.md).
 
 ---
 
-*Tài liệu này mô tả trạng thái thật của mã nguồn tại tag `v0.2-fall-fix`.
+*Tài liệu này mô tả trạng thái thật của mã nguồn tại tag `v0.5-features-complete`.
 Khi code thay đổi mà tài liệu không đổi theo, tài liệu là bên sai.*

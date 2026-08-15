@@ -213,7 +213,7 @@ SparkFun** (`spo2_algorithm.h`), không sửa được. Thuật toán SpO2 vẫn
 
 **Giao diện tạo ra:** biến `sampleCounter` đếm mẫu thô; hằng `PPG_DECIMATE = 8`
 
-- [ ] **Bước 1:** Đổi cấu hình cảm biến (2 chỗ — cả `init` lẫn `checkSensorAlive`)
+- [x] **Bước 1:** Đổi cấu hình cảm biến (2 chỗ — cả `init` lẫn `checkSensorAlive`)
 
 ```cpp
 // 200 Hz thô, KHÔNG trung bình phần cứng (tham số thứ 2 = 1).
@@ -222,7 +222,7 @@ SparkFun** (`spo2_algorithm.h`), không sửa được. Thuật toán SpO2 vẫn
 particleSensor.setup(MAX30102_LED_BRIGHTNESS, 1, 2, 200, 411, 4096);
 ```
 
-- [ ] **Bước 2:** Thêm bộ chia tần cho nhánh SpO2
+- [x] **Bước 2:** Thêm bộ chia tần cho nhánh SpO2
 
 ```cpp
 // Thuật toán SpO2 của SparkFun có FreqS = 25 nướng cứng trong thư viện.
@@ -233,7 +233,7 @@ static uint8_t sampleCounter = 0;
 static uint32_t irAccum = 0, redAccum = 0;
 ```
 
-- [ ] **Bước 3:** Tách hai nhánh trong vòng `while (particleSensor.available())`
+- [x] **Bước 3:** Tách hai nhánh trong vòng `while (particleSensor.available())`
 
 Nhánh phát hiện nhịp (`checkForBeat`) giữ nguyên vị trí, ăn mọi mẫu.
 Phần đổ vào `irBuffer`/`redBuffer` chuyển thành:
@@ -256,20 +256,20 @@ if (++sampleCounter >= PPG_DECIMATE) {
 }
 ```
 
-- [ ] **Bước 4:** Đặt lại bộ đếm trong `resetMeasurement()`
+- [x] **Bước 4:** Đặt lại bộ đếm trong `resetMeasurement()`
 
 ```cpp
 sampleCounter = 0;
 irAccum = redAccum = 0;
 ```
 
-- [ ] **Bước 5:** Build và nạp
+- [x] **Bước 5:** Build và nạp
 
 ```bash
 pio run && pio run --target upload && pio device monitor -b 115200
 ```
 
-- [ ] **Bước 6:** Nghiệm thu trên phần cứng
+- [ ] 🔧 **CẦN THIẾT BỊ THẬT —** **Bước 6:** Nghiệm thu trên phần cứng
 
 | Kiểm | Mong đợi | Nếu sai |
 |---|---|---|
@@ -277,7 +277,7 @@ pio run && pio run --target upload && pio device monitor -b 115200
 | Nhịp tim vẫn khớp bắt mạch tay | Phát hiện nhịp chịu được 200 Hz | Lệch → `checkForBeat` cần chỉnh ngưỡng |
 | FIFO không tràn | Vòng lặp theo kịp | Tràn → FIFO 32 mẫu đầy sau 160 ms, vòng lặp 20 ms dư sức, nên tràn nghĩa là có chỗ khác chặn |
 
-- [ ] **Bước 7:** Commit
+- [x] **Bước 7:** Commit
 
 ```bash
 git commit -am "feat(ppg): 200 Hz sampling with an 8x decimated SpO2 path"
@@ -292,7 +292,7 @@ cần đo. Nâng 200 Hz mà không sửa chỗ này thì coi như không nâng.
 
 **File:** Sửa `src/sensors/max30102_service.cpp:152-156`
 
-- [ ] **Bước 1:** Thêm bộ đếm mẫu tuyệt đối
+- [x] **Bước 1:** Thêm bộ đếm mẫu tuyệt đối
 
 ```cpp
 // Số mẫu đã đi qua kể từ lần reset. Ở 200 Hz mỗi mẫu là đúng 5 ms, nên
@@ -304,14 +304,14 @@ static uint32_t lastBeatSample = 0;
 #define PPG_SAMPLE_PERIOD_MS 5.0f
 ```
 
-- [ ] **Bước 2:** Tăng bộ đếm ngay sau `nextSample()`
+- [x] **Bước 2:** Tăng bộ đếm ngay sau `nextSample()`
 
 ```cpp
 particleSensor.nextSample();
 sampleIndex++;
 ```
 
-- [ ] **Bước 3:** Tính BPM từ chỉ số mẫu
+- [x] **Bước 3:** Tính BPM từ chỉ số mẫu
 
 ```cpp
 if (!g_watchState.motionArtifact && checkForBeat(ir)) {
@@ -329,19 +329,19 @@ if (!g_watchState.motionArtifact && checkForBeat(ir)) {
 > **Giữ `lastBeatMs`.** Nó không còn dùng để tính BPM nữa nhưng bộ canh "số đã cũ quá 6 giây"
 > ở cuối hàm vẫn cần. Bỏ nó đi là làm hỏng một thứ không liên quan.
 
-- [ ] **Bước 4:** Đặt lại cả hai trong `resetMeasurement()`
+- [x] **Bước 4:** Đặt lại cả hai trong `resetMeasurement()`
 
 ```cpp
 sampleIndex = 0;
 lastBeatSample = 0;
 ```
 
-- [ ] **Bước 5:** Build, nạp, xác nhận nhịp tim không đổi hành vi
+- [x] **Bước 5:** Build, nạp, xác nhận nhịp tim không đổi hành vi
 
 Số hiển thị phải **giống trước**. Giai đoạn này cải thiện *độ mịn* chứ không đổi *giá trị*.
 Nếu số nhảy lung tung → `sampleIndex` đang chạy sai nhịp với thực tế.
 
-- [ ] **Bước 6:** Commit
+- [x] **Bước 6:** Commit
 
 ```bash
 git commit -am "fix(ppg): derive beat timing from FIFO index, not loop arrival time"
@@ -364,7 +364,7 @@ bool   getRRFeatures(float* rmssd, float* pnn50, float* entropy);  // false nế
 void   resetRRAnalysis();
 ```
 
-- [ ] **Bước 1:** Tạo header
+- [x] **Bước 1:** Tạo header
 
 ```cpp
 #ifndef RR_ANALYSIS_H
@@ -382,7 +382,7 @@ void resetRRAnalysis();
 #endif
 ```
 
-- [ ] **Bước 2:** Khai báo trạng thái ở đầu `rr_analysis.cpp`
+- [x] **Bước 2:** Khai báo trạng thái ở đầu `rr_analysis.cpp`
 
 ```cpp
 #include "rr_analysis.h"
@@ -413,7 +413,7 @@ void pushRRInterval(float ms) {
 }
 ```
 
-- [ ] **Bước 3:** Cài đặt RMSSD và pNN50
+- [x] **Bước 3:** Cài đặt RMSSD và pNN50
 
 ```cpp
 // RMSSD -- căn bậc hai trung bình bình phương hiệu hai khoảng liên tiếp.
@@ -435,7 +435,7 @@ bool getRRFeatures(float* rmssd, float* pnn50, float* entropy) {
 }
 ```
 
-- [ ] **Bước 4:** Cài đặt entropy Shannon (chia giỏ 16 mức)
+- [x] **Bước 4:** Cài đặt entropy Shannon (chia giỏ 16 mức)
 
 ```cpp
 // Entropy Shannon trên histogram khoảng RR. Nhịp xoang đều cho phân bố hẹp
@@ -465,7 +465,7 @@ static float shannonEntropy() {
 }
 ```
 
-- [ ] **Bước 5:** Nối vào `max30102_service.cpp`
+- [x] **Bước 5:** Nối vào `max30102_service.cpp`
 
 Ngay sau khi một nhịp **vượt qua** bộ chặn (nhánh `else` của `isSpike`, cùng chỗ ghi `rates[]`):
 
@@ -475,7 +475,7 @@ Ngay sau khi một nhịp **vượt qua** bộ chặn (nhánh `else` của `isSp
 pushRRInterval(deltaMs);
 ```
 
-- [ ] **Bước 6:** In đặc trưng ra log mỗi 10 giây để quan sát
+- [x] **Bước 6:** In đặc trưng ra log mỗi 10 giây để quan sát
 
 ```cpp
 float rmssd, pnn50, ent;
@@ -484,12 +484,12 @@ if (getRRFeatures(&rmssd, &pnn50, &ent)) {
 }
 ```
 
-- [ ] **Bước 7:** Nghiệm thu
+- [ ] 🔧 **CẦN THIẾT BỊ THẬT —** **Bước 7:** Nghiệm thu
 
 Ngồi yên 2 phút. Mong đợi RMSSD **20–60 ms** với người khoẻ. Nếu ra hàng trăm ms → khoảng RR
 còn nhiễu, bộ lọc tầng 4 chưa đủ, **không được sang Giai đoạn 7 nhánh loạn nhịp**.
 
-- [ ] **Bước 8:** Commit
+- [x] **Bước 8:** Commit
 
 ```bash
 git add src/dsp/ && git commit -m "feat(dsp): RR interval buffer with RMSSD, pNN50 and entropy"
@@ -497,7 +497,7 @@ git add src/dsp/ && git commit -m "feat(dsp): RR interval buffer with RMSSD, pNN
 
 ### Nhiệm vụ 5.4 — DSP Tầng 5: Kalman 1D + chặn hiển thị theo SQI
 
-- [ ] **Bước 1:** Thêm bộ lọc Kalman vô hướng
+- [x] **Bước 1:** Thêm bộ lọc Kalman vô hướng
 
 ```cpp
 // Kalman 1D trên nhịp tim. Trung vị đã bỏ được các gai; Kalman lo phần
@@ -515,7 +515,7 @@ static float kalmanUpdate(float measurement) {
 }
 ```
 
-- [ ] **Bước 2:** Thêm hằng số vào `app_config.h`
+- [x] **Bước 2:** Thêm hằng số vào `app_config.h`
 
 ```cpp
 // Nhiễu quá trình: nhịp tim thật đổi bao nhanh. Nhỏ = tin mô hình, mượt
@@ -533,7 +533,7 @@ static float kalmanUpdate(float measurement) {
 #define PPG_MIN_SQI   20
 ```
 
-- [ ] **Bước 3:** Áp Kalman sau trung vị
+- [x] **Bước 3:** Áp Kalman sau trung vị
 
 ```cpp
 if (valid >= 2) {
@@ -546,7 +546,7 @@ if (valid >= 2) {
 
 Đặt lại `kalmanX = 0; kalmanP = 1.0f;` trong `resetMeasurement()`.
 
-- [ ] **Bước 4:** Chặn hiển thị theo SQI
+- [x] **Bước 4:** Chặn hiển thị theo SQI
 
 ```cpp
 // Số đúng mà tín hiệu rác vẫn là số sai. Dưới ngưỡng SQI thì thà không
@@ -556,7 +556,7 @@ if (g_watchState.signalQuality < PPG_MIN_SQI) {
 }
 ```
 
-- [ ] **Bước 5:** Nghiệm thu
+- [ ] 🔧 **CẦN THIẾT BỊ THẬT —** **Bước 5:** Nghiệm thu
 
 | Kiểm | Mong đợi |
 |---|---|
@@ -565,7 +565,7 @@ if (g_watchState.signalQuality < PPG_MIN_SQI) {
 | Tháo khỏi cổ tay | Số biến mất trong vài giây |
 | Đeo lại | Số quay lại trong ~10 giây |
 
-- [ ] **Bước 6:** Commit + tag
+- [x] **Bước 6:** Commit + tag
 
 ```bash
 git commit -am "feat(dsp): stage 5 -- 1D Kalman on heart rate plus SQI display gate"
@@ -587,7 +587,7 @@ cảnh báo bắn ra từ số rác. C2 và C3 độc lập, làm trước đư�
 **⚠️ GPIO 0 là chân strapping.** Mức của nó lúc khởi động quyết định ESP32 vào chế độ nạp hay
 chạy bình thường. **Chỉ được `pinMode()` và đọc SAU KHI `setup()` xong.** Đọc sớm là treo máy.
 
-- [ ] **Bước 1:** Thêm hằng số
+- [x] **Bước 1:** Thêm hằng số
 
 ```cpp
 // Nút BOOT dùng lại làm SOS. GPIO 0 là chân strapping -- chỉ chạm vào nó
@@ -596,14 +596,14 @@ chạy bình thường. **Chỉ được `pinMode()` và đọc SAU KHI `setup()
 #define SOS_HOLD_MS        1500UL
 ```
 
-- [ ] **Bước 2:** Khởi tạo ở **cuối** `setup()`, không phải đầu
+- [x] **Bước 2:** Khởi tạo ở **cuối** `setup()`, không phải đầu
 
 ```cpp
 // Đặt ở dòng cuối cùng của setup() một cách có chủ ý. Xem SOS_BUTTON_PIN.
 pinMode(SOS_BUTTON_PIN, INPUT_PULLUP);
 ```
 
-- [ ] **Bước 3:** Xử lý giữ nút trong `loop()`
+- [x] **Bước 3:** Xử lý giữ nút trong `loop()`
 
 ```cpp
 static unsigned long sosPressStart = 0;
@@ -622,16 +622,16 @@ void updateSOSButton() {
 }
 ```
 
-- [ ] **Bước 4:** Nghiệm thu — giữ 1.5 s bắn cảnh báo; nhấn nhanh **không** bắn; giữ 10 s chỉ bắn một lần
+- [ ] 🔧 **CẦN THIẾT BỊ THẬT —** **Bước 4:** Nghiệm thu — giữ 1.5 s bắn cảnh báo; nhấn nhanh **không** bắn; giữ 10 s chỉ bắn một lần
 
-- [ ] **Bước 5:** Commit `feat(ui): physical SOS on the BOOT button`
+- [x] **Bước 5:** Commit `feat(ui): physical SOS on the BOOT button`
 
 ### Nhiệm vụ 6.2 — Cảnh báo pin yếu
 
 **Phụ thuộc:** cần đường cong pin của Giai đoạn 3b.5 đã hiệu chỉnh, nếu không ngưỡng 15% không
 tương ứng với 15% thật.
 
-- [ ] **Bước 1:** Thêm ngưỡng có trễ (hysteresis)
+- [x] **Bước 1:** Thêm ngưỡng có trễ (hysteresis)
 
 ```cpp
 #define BATTERY_LOW_PCT      15
@@ -640,7 +640,7 @@ tương ứng với 15% thật.
 #define BATTERY_CLEAR_PCT    20
 ```
 
-- [ ] **Bước 2:** Gửi đúng một tin
+- [x] **Bước 2:** Gửi đúng một tin
 
 ```cpp
 static bool lowBatteryNotified = false;
@@ -661,19 +661,19 @@ void checkLowBattery() {
 }
 ```
 
-- [ ] **Bước 3:** Nghiệm thu — xả pin xuống dưới 15%, xác nhận **đúng một** tin Telegram
+- [ ] 🔧 **CẦN THIẾT BỊ THẬT —** **Bước 3:** Nghiệm thu — xả pin xuống dưới 15%, xác nhận **đúng một** tin Telegram
 
 > Đây chính là kịch bản mà lỗi H2 từng chặn hoàn toàn: khi "đang sạc" suy ra từ mức điện áp,
 > cắm USB không pin luôn đọc 100% nên nhánh này không bao giờ chạy tới.
 
-- [ ] **Bước 4:** Commit `feat(alert): low battery warning with hysteresis`
+- [x] **Bước 4:** Commit `feat(alert): low battery warning with hysteresis`
 
 ### Nhiệm vụ 6.3 — Cảnh báo ngưỡng sinh lý
 
 **⚠️ Chỉ làm SAU Giai đoạn 5.** Không có tầng 5 thì cảnh báo bắn từ số rác, và một cảnh báo y tế
 sai còn tệ hơn không có cảnh báo.
 
-- [ ] **Bước 1:** Thêm ngưỡng + thời gian duy trì
+- [x] **Bước 1:** Thêm ngưỡng + thời gian duy trì
 
 ```cpp
 #define VITAL_HR_HIGH        130
@@ -686,7 +686,7 @@ sai còn tệ hơn không có cảnh báo.
 #define VITAL_REPEAT_MS   600000UL
 ```
 
-- [ ] **Bước 2:** Cài đặt, **chỉ chạy khi số đáng tin**
+- [x] **Bước 2:** Cài đặt, **chỉ chạy khi số đáng tin**
 
 ```cpp
 void checkVitalThresholds() {
@@ -699,9 +699,9 @@ void checkVitalThresholds() {
 }
 ```
 
-- [ ] **Bước 3:** Nghiệm thu — chạy tại chỗ cho nhịp lên >130, xác nhận cảnh báo sau 5 giây liên tục
+- [ ] 🔧 **CẦN THIẾT BỊ THẬT —** **Bước 3:** Nghiệm thu — chạy tại chỗ cho nhịp lên >130, xác nhận cảnh báo sau 5 giây liên tục
 
-- [ ] **Bước 4:** Commit + tag `v0.5-features-complete`
+- [x] **Bước 4:** Commit + tag `v0.5-features-complete`
 
 ---
 
