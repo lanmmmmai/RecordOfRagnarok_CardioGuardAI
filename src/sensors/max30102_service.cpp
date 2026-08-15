@@ -243,6 +243,12 @@ void updateMAX30102Service() {
             g_samplesSinceBeat = 100;
             cycleMinIr = ir; cycleMaxIr = ir;
             cycleMinRed = red; cycleMaxRed = red;
+            // The quality figure belongs to the session that just ended, and
+            // every other line of this block is here to discard exactly that.
+            // Leaving it out meant a finger returning to the sensor found the
+            // whole DSP chain restarted from nothing while the quality bar
+            // still showed what the previous finger scored.
+            g_watchState.signalQuality = 0;
         }
         g_watchState.skinContact = true;
         contactGapSamples = 0;
@@ -440,5 +446,11 @@ void updateMAX30102Service() {
     if (lastBeatMs > 0 && (millis() - lastBeatMs >= 3500)) {
         g_watchState.hrValid = false;
         g_watchState.spo2Valid = false;
+        // Quality expires with the reading it describes. Without this the log
+        // showed the halfway state the guard exists to prevent: "Pulse: -- |
+        // Quality: 21%", a confidence figure for a measurement that had already
+        // been withdrawn. It is computed per cardiac cycle, so once beats stop
+        // arriving there is nothing left keeping it current.
+        g_watchState.signalQuality = 0;
     }
 }
