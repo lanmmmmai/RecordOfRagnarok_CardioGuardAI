@@ -231,7 +231,7 @@ Nút Vật lý BOOT          Cảm ứng: Nhấn giữ           Cảm ứng: Qu
 #define WIFI_SSID           "WiFi_Nha_Ban"
 #define WIFI_PASSWORD       "Mat_Khau_WiFi"
 #define TELEGRAM_BOT_TOKEN  "YOUR_TELEGRAM_BOT_TOKEN" // Bot: @Gia_Dinh_bot (TroLiGiaDinh)
-#define TELEGRAM_CHAT_ID    "-100123456789" // Chat ID của Group Telegram Gia đình
+#define TELEGRAM_CHAT_ID    "YOUR_TELEGRAM_CHAT_ID" // Chat ID Nhóm Telegram: "Gia đình là số 1"
 ```
 
 ### Mẫu Tin nhắn Telegram Phát vào Group Gia đình:
