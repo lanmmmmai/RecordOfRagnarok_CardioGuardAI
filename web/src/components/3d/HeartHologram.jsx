@@ -86,11 +86,11 @@ export default function HeartHologram({ bpm = 76 }) {
 
     // Animation variables
     let animationFrameId;
-    let clock = new THREE.Clock();
+    let startTime = performance.now();
 
     const animate = () => {
       animationFrameId = requestAnimationFrame(animate);
-      const elapsedTime = clock.getElapsedTime();
+      const elapsedTime = (performance.now() - startTime) * 0.001;
 
       // Beat calculation based on BPM
       const beatFrequency = (bpm / 60) * Math.PI * 2;

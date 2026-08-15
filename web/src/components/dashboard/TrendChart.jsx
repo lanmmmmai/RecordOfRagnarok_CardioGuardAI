@@ -1,6 +1,29 @@
 import React, { useState } from 'react';
 import { TrendingUp, Calendar, Clock, BarChart3, Filter } from 'lucide-react';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+} from 'chart.js';
 import { Line } from 'react-chartjs-2';
+
+// Register all ChartJS modules
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+);
 
 export default function TrendChart({ mock24hData, mock7DaysTrend }) {
   const [timeRange, setTimeRange] = useState('24H'); // 24H, 7D
@@ -168,20 +191,20 @@ export default function TrendChart({ mock24hData, mock7DaysTrend }) {
 
       {/* Chart Canvas Area */}
       <div className="h-72 w-full relative">
-        <Line data={timeRange === '24H' ? chartData24H : chartData7D} options={options} />
+        <Line key={timeRange} data={timeRange === '24H' ? chartData24H : chartData7D} options={options} />
       </div>
 
       {/* Key Insights Ticker */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-        <div className="p-3 glass-panel rounded-2xl border-l-4 border-l-cyan-400">
+        <div className="p-3 glass-panel rounded-2xl border border-cyan-500/30">
           <span className="text-slate-400 font-medium block">Nhịp tim trung bình</span>
           <span className="text-base font-bold text-white font-mono">72 BPM (Ổn định)</span>
         </div>
-        <div className="p-3 glass-panel rounded-2xl border-l-4 border-l-rose-500">
+        <div className="p-3 glass-panel rounded-2xl border border-rose-500/30">
           <span className="text-slate-400 font-medium block">Đỉnh nhịp cao nhất</span>
           <span className="text-base font-bold text-rose-400 font-mono">124 BPM (Khi vận động)</span>
         </div>
-        <div className="p-3 glass-panel rounded-2xl border-l-4 border-l-amber-400">
+        <div className="p-3 glass-panel rounded-2xl border border-amber-400/30">
           <span className="text-slate-400 font-medium block">Nhịp tim nghỉ ngơi (Resting)</span>
           <span className="text-base font-bold text-amber-300 font-mono">58 BPM (Lúc 04:00 sáng)</span>
         </div>

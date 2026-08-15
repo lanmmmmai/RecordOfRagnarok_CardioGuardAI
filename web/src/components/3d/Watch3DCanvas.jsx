@@ -136,11 +136,11 @@ export default function Watch3DCanvas({ onTriggerSOS, simulatedBpm = 76 }) {
     currentMount.addEventListener('mousemove', handleMouseMove);
 
     let animationFrameId;
-    let clock = new THREE.Clock();
+    let startTime = performance.now();
 
     const animate = () => {
       animationFrameId = requestAnimationFrame(animate);
-      const elapsedTime = clock.getElapsedTime();
+      const elapsedTime = (performance.now() - startTime) * 0.001;
 
       particleSystem.rotation.y = elapsedTime * 0.1;
 
