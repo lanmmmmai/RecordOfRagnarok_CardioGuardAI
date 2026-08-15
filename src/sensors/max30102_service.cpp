@@ -149,21 +149,33 @@ void updateMAX30102Service() {
             if (lastBeatMs > 0) {
                 unsigned long delta = now - lastBeatMs;
                 float bpm = 60000.0f / (float)delta;
-                if (bpm > 40.0f && bpm < 200.0f) {
-                    rates[rateIndex] = (uint8_t)bpm;
-                    rateIndex = (rateIndex + 1) % RATE_SIZE;
+                if (bpm >= 45.0f && bpm <= 180.0f) {
+                    // Rate-of-Change Gate: Reject single-sample spikes > 15 BPM/sec if already valid
+                    bool isSpike = g_watchState.hrValid && (fabsf(bpm - g_watchState.heartRateBPM) > 15.0f);
+                    if (!isSpike) {
+                        rates[rateIndex] = (uint8_t)bpm;
+                        rateIndex = (rateIndex + 1) % RATE_SIZE;
 
-                    uint16_t sum = 0;
-                    uint8_t valid = 0;
-                    for (uint8_t i = 0; i < RATE_SIZE; i++) {
-                        if (rates[i] > 0) { sum += rates[i]; valid++; }
-                    }
-                    if (valid == RATE_SIZE) {
-                        g_watchState.heartRateBPM = sum / valid;
-                        g_watchState.hrValid = true;
-                        g_watchState.heartRateHistory[g_watchState.historyIndex] =
-                            g_watchState.heartRateBPM;
-                        g_watchState.historyIndex = (g_watchState.historyIndex + 1) % 30;
+                        uint8_t temp[RATE_SIZE];
+                        uint8_t valid = 0;
+                        for (uint8_t i = 0; i < RATE_SIZE; i++) {
+                            if (rates[i] > 0) { temp[valid++] = rates[i]; }
+                        }
+                        if (valid == RATE_SIZE) {
+                            // Sort for Median Filter
+                            for (uint8_t i = 0; i < valid - 1; i++) {
+                                for (uint8_t j = i + 1; j < valid; j++) {
+                                    if (temp[i] > temp[j]) {
+                                        uint8_t t = temp[i]; temp[i] = temp[j]; temp[j] = t;
+                                    }
+                                }
+                            }
+                            g_watchState.heartRateBPM = (temp[1] + temp[2]) / 2; // Median of 4 samples
+                            g_watchState.hrValid = true;
+                            g_watchState.heartRateHistory[g_watchState.historyIndex] =
+                                g_watchState.heartRateBPM;
+                            g_watchState.historyIndex = (g_watchState.historyIndex + 1) % 30;
+                        }
                     }
                 }
             }
@@ -184,7 +196,7 @@ void updateMAX30102Service() {
 
             // Wrist SpO2 is a reference figure at best, so it is only shown
             // when the algorithm is confident and the arm was still.
-            if (spo2Valid && spo2 > 70 && spo2 <= 100 && !g_watchState.motionArtifact) {
+            if (spo2Valid && spo2 >= 92 && spo2 <= 100 && !g_watchState.motionArtifact) {
                 g_watchState.spo2Percent = (uint8_t)spo2;
                 g_watchState.spo2Valid = true;
             } else {
