@@ -145,6 +145,8 @@ export default function Dashboard({
       <ClinicalReportModal
         isOpen={isClinicalReportOpen}
         onClose={() => setIsClinicalReportOpen(false)}
+        rawTelemetry={rawTelemetry}
+        isConnected={connectionState.connected}
       />
 
     </div>
