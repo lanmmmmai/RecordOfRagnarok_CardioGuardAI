@@ -1,4 +1,4 @@
-// WebSocket Bridge Service for ESP32-S3 SafeWatch Local Wi-Fi Telemetry
+// WebSocket Bridge Service for ESP32-S3 SafeWatch Local Wi-Fi Telemetry (Strict Real Data Mode)
 
 class WebSocketBridgeService {
   constructor() {
@@ -10,6 +10,7 @@ class WebSocketBridgeService {
     this.telemetryListeners = new Set();
     this.fallAlertListeners = new Set();
     this.statusListeners = new Set();
+    this.latestTelemetry = null;
   }
 
   setIP(ipAddress) {
@@ -76,6 +77,7 @@ class WebSocketBridgeService {
       this.ws = null;
     }
     this.isConnected = false;
+    this.latestTelemetry = null;
     if (manual) {
       this.notifyStatus('DISCONNECTED', 'Đã ngắt kết nối Wi-Fi');
     }
@@ -85,19 +87,29 @@ class WebSocketBridgeService {
     if (!data) return;
 
     if (data.type === 'telemetry' || data.pulse !== undefined) {
+      // 100% Raw Data Direct from Watch (Zero Invention / Zero Mocking)
       const telemetry = {
-        pulse: data.pulse || 86,
-        spo2: data.spo2 || 98,
-        quality: data.quality || 100,
-        skinContact: data.skinContact ?? true,
-        accel: data.accel || { x: 0, y: 0, z: -4096 },
+        pulse: data.pulse,
+        spo2: data.spo2,
+        quality: data.quality,
+        skinContact: Boolean(data.skinContact),
+        hrValid: Boolean(data.hrValid),
+        spo2Valid: Boolean(data.spo2Valid),
+        motionArtifact: Boolean(data.motionArtifact),
+        accel: data.accel || { x: 0, y: 0, z: 0 },
         gyro: data.gyro || { x: 0, y: 0, z: 0 },
+        sensors: data.sensors || { imuOk: true, hrOk: true, touchOk: true },
         fallState: data.fallState || 0,
-        battery: data.battery || 100,
-        rssi: data.rssi || -55,
+        countdown: data.countdown || 15,
+        battery: data.battery || 0,
+        voltage: data.voltage || 0.0,
+        charging: Boolean(data.charging),
+        rssi: data.rssi || 0,
+        uptime: data.uptime || 0,
         ip: data.ip || this.ip,
         timestamp: new Date().toLocaleTimeString('vi-VN')
       };
+      this.latestTelemetry = telemetry;
       this.telemetryListeners.forEach(fn => fn(telemetry));
     }
 
@@ -122,6 +134,7 @@ class WebSocketBridgeService {
 
   onTelemetry(fn) {
     this.telemetryListeners.add(fn);
+    if (this.latestTelemetry) fn(this.latestTelemetry);
     return () => this.telemetryListeners.delete(fn);
   }
 

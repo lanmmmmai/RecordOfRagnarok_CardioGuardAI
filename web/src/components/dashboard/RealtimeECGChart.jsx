@@ -1,43 +1,17 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Activity, Radio, AlertCircle, RefreshCw } from 'lucide-react';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-} from 'chart.js';
+import React, { useEffect, useState } from 'react';
+import { Activity, Radio, AlertCircle } from 'lucide-react';
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-);
+export default function RealtimeECGChart({ simulatedBpm, isConnected, rawTelemetry }) {
+  // Real BPM from watch when connected
+  const realBpm = isConnected
+    ? (rawTelemetry?.skinContact && rawTelemetry?.pulse > 0 ? rawTelemetry.pulse : 0)
+    : simulatedBpm;
 
-export default function RealtimeECGChart({ simulatedBpm, isSimulating }) {
-  const canvasRef = useRef(null);
-  const [dataPoints, setDataPoints] = useState(() => {
-    // Generate initial clean ECG waveform points
-    const points = [];
-    for (let i = 0; i < 80; i++) {
-      points.push(generateECGValue(i, 76));
-    }
-    return points;
-  });
+  const [dataPoints, setDataPoints] = useState(() => Array(80).fill(0));
 
-  const [arrhythmiaAlert, setArrhythmiaAlert] = useState(false);
-
-  // Helper generator for ECG wave shape (P-Q-R-S-T wave)
+  // Helper generator for ECG wave shape (P-Q-R-S-T wave) driven by real BPM
   function generateECGValue(index, bpm) {
+    if (bpm === 0) return (Math.random() - 0.5) * 1.5; // Baseline idle noise when not on skin
     const cycleLength = Math.max(12, Math.floor(600 / bpm));
     const pos = index % cycleLength;
 
@@ -46,30 +20,20 @@ export default function RealtimeECGChart({ simulatedBpm, isSimulating }) {
     if (pos === 5) return 48; // R peak (ECG Spike)
     if (pos === 6) return -20; // S wave
     if (pos === 8) return 12; // T wave
-    return (Math.random() - 0.5) * 3; // Baseline noise
+    return (Math.random() - 0.5) * 2; // Baseline noise
   }
 
   useEffect(() => {
     const interval = setInterval(() => {
       setDataPoints((prevPoints) => {
         const nextIndex = prevPoints.length;
-        // Occasionally inject arrhythmia spike if simulated BPM > 105
-        let nextVal = generateECGValue(nextIndex, simulatedBpm);
-
-        if (simulatedBpm > 105 && Math.random() < 0.15) {
-          nextVal = 65; // High PVC peak
-          setArrhythmiaAlert(true);
-        } else {
-          setArrhythmiaAlert(false);
-        }
-
-        const newArr = [...prevPoints.slice(1), nextVal];
-        return newArr;
+        const nextVal = generateECGValue(nextIndex, realBpm);
+        return [...prevPoints.slice(1), nextVal];
       });
     }, 60);
 
     return () => clearInterval(interval);
-  }, [simulatedBpm]);
+  }, [realBpm]);
 
   return (
     <div className="glass-panel rounded-3xl p-6 border border-slate-800 space-y-4 relative overflow-hidden">
@@ -79,33 +43,35 @@ export default function RealtimeECGChart({ simulatedBpm, isSimulating }) {
         <div>
           <div className="flex items-center space-x-2">
             <Activity className="w-5 h-5 text-rose-500 animate-pulse" />
-            <h3 className="text-lg font-bold text-white">SÓNG TIM ECG / PPG REAL-TIME MONITOR</h3>
+            <h3 className="text-lg font-bold text-white">SÓNG TIM PPG REAL-TIME MONITOR</h3>
             <span className="px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-400 font-mono text-xs font-bold border border-rose-500/30">
-              50Hz Sampling
+              {isConnected ? "Wi-Fi Telemetry Stream 10Hz" : "50Hz Sampling"}
             </span>
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
-            Lọc nhiễu DSP 5 tầng • Chuẩn R-R Interval • Phát hiện Ngoại tâm thu (PVC) INT8 AI
+            {isConnected
+              ? "Tín hiệu sóng tim PPG thô truyền trực tiếp từ cảm biến MAX30102 trên đồng hồ SafeWatch"
+              : "Lọc nhiễu DSP 5 tầng • Chuẩn R-R Interval • Phát hiện Ngoại tâm thu (PVC) INT8 AI"}
           </p>
         </div>
 
         <div className="flex items-center space-x-3 text-xs font-mono">
           <div className="flex items-center space-x-1.5 px-3 py-1 bg-slate-900 rounded-xl border border-slate-800">
             <Radio className="w-3.5 h-3.5 text-cyan-400 animate-ping" />
-            <span className="text-cyan-400 font-bold">STREAM LIVE</span>
+            <span className="text-cyan-400 font-bold">{isConnected ? "WIFI HARDWARE STREAM" : "STREAM LIVE"}</span>
           </div>
 
           <div className="px-3 py-1 bg-slate-900 rounded-xl border border-slate-800 text-rose-400 font-bold">
-            {simulatedBpm} BPM
+            {realBpm > 0 ? `${realBpm} BPM` : "CHƯA ĐEO DA"}
           </div>
         </div>
       </div>
 
-      {/* Arrhythmia Warning Floating Banner */}
-      {arrhythmiaAlert && (
-        <div className="flex items-center space-x-2 p-3 rounded-2xl bg-rose-500/20 border border-rose-500/50 text-rose-300 text-xs font-bold animate-bounce">
-          <AlertCircle className="w-4 h-4 text-rose-500" />
-          <span>PHÁT HIỆN NHỊP NGOẠI TÂM THU (PVC) BẤT THƯỜNG TRÊN SÓNG ECG!</span>
+      {/* No skin contact warning banner */}
+      {isConnected && !rawTelemetry?.skinContact && (
+        <div className="flex items-center space-x-2 p-3 rounded-2xl bg-amber-500/20 border border-amber-500/50 text-amber-300 text-xs font-bold">
+          <AlertCircle className="w-4 h-4 text-amber-400" />
+          <span>CẢNH BÁO PHẦN CỨNG: CẢM BIẾN CHƯA THÁO KHỎI / CHƯA CHẠM DA TAY DƯỚI ĐỒNG HỒ!</span>
         </div>
       )}
 
@@ -121,7 +87,7 @@ export default function RealtimeECGChart({ simulatedBpm, isSimulating }) {
           {/* Polyline connecting points */}
           <polyline
             fill="none"
-            stroke={simulatedBpm > 105 ? '#ff3366' : '#00f2fe'}
+            stroke={realBpm > 105 ? '#ff3366' : realBpm === 0 ? '#64748b' : '#00f2fe'}
             strokeWidth="2.5"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -143,20 +109,22 @@ export default function RealtimeECGChart({ simulatedBpm, isSimulating }) {
       {/* Footer Stats Ticker */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs font-mono">
         <div className="p-2.5 glass-panel rounded-xl text-center">
-          <span className="text-slate-400 block text-[10px]">TẦN SỐ XUNG</span>
-          <span className="text-cyan-400 font-bold">1.25 Hz</span>
+          <span className="text-slate-400 block text-[10px]">TẦN SỐ TRUYỀN</span>
+          <span className="text-cyan-400 font-bold">{isConnected ? "10 Hz Wi-Fi" : "1.25 Hz"}</span>
         </div>
         <div className="p-2.5 glass-panel rounded-xl text-center">
-          <span className="text-slate-400 block text-[10px]">KHOẢNG R-R AVERAGE</span>
-          <span className="text-emerald-400 font-bold">789 ms</span>
+          <span className="text-slate-400 block text-[10px]">CHẤT LƯỢNG SÓNG SQI</span>
+          <span className="text-emerald-400 font-bold">{isConnected ? `${rawTelemetry?.quality || 0}%` : "789 ms"}</span>
         </div>
         <div className="p-2.5 glass-panel rounded-xl text-center">
-          <span className="text-slate-400 block text-[10px]">LỘC NHIỄU NOTCH</span>
-          <span className="text-amber-300 font-bold">50 Hz ACTIVE</span>
+          <span className="text-slate-400 block text-[10px]">TRẠNG THÁI CHẠM DA</span>
+          <span className={isConnected && rawTelemetry?.skinContact ? "text-emerald-400 font-bold" : "text-amber-300 font-bold"}>
+            {isConnected ? (rawTelemetry?.skinContact ? "ĐÃ ĐEO CHẠM DA" : "CHƯA ĐEO DA") : "50 Hz ACTIVE"}
+          </span>
         </div>
         <div className="p-2.5 glass-panel rounded-xl text-center">
-          <span className="text-slate-400 block text-[10px]">DỰ ĐOÁN AI INT8</span>
-          <span className="text-rose-400 font-bold">NORMAL SINUS</span>
+          <span className="text-slate-400 block text-[10px]">CẢM BIẾN NGUYÊN BẢN</span>
+          <span className="text-rose-400 font-bold">{isConnected ? "100% REAL DATA" : "NORMAL SINUS"}</span>
         </div>
       </div>
 

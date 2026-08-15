@@ -28,8 +28,10 @@ export default function Dashboard({
   onExportReport
 }) {
   const [isClinicalReportOpen, setIsClinicalReportOpen] = useState(false);
-  const [activeSubTab, setActiveSubTab] = useState('COLLECTOR'); // COLLECTOR, IMU, LOGS
+  const [activeSubTab, setActiveSubTab] = useState('COLLECTOR');
   const [liveBpm, setLiveBpm] = useState(simulatedBpm);
+  const [rawTelemetry, setRawTelemetry] = useState(null);
+
   const [connectionState, setConnectionState] = useState({
     connected: false,
     mode: 'DISCONNECTED',
@@ -40,8 +42,11 @@ export default function Dashboard({
 
   useEffect(() => {
     const unsubTelemetry = websocketBridgeService.onTelemetry((data) => {
-      if (data && data.pulse) {
-        setLiveBpm(data.pulse);
+      if (data) {
+        setRawTelemetry(data);
+        if (data.pulse !== undefined) {
+          setLiveBpm(data.pulse);
+        }
       }
     });
 
@@ -79,7 +84,12 @@ export default function Dashboard({
 
       {/* 2. Core Vitals Grid */}
       <ScrollReveal delay={100}>
-        <VitalCard vitalSummary={vitalSummary} simulatedBpm={activeBpm} />
+        <VitalCard
+          vitalSummary={vitalSummary}
+          simulatedBpm={activeBpm}
+          isConnected={connectionState.connected}
+          rawTelemetry={rawTelemetry}
+        />
       </ScrollReveal>
 
       {/* 3. Realtime Hardware Bridge & Diagnostics */}
@@ -93,7 +103,12 @@ export default function Dashboard({
       {/* 4. Live ECG Waveform Oscilloscope & 24h/7d Trends (2 Columns) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <ScrollReveal delay={200} className="lg:col-span-6">
-          <RealtimeECGChart simulatedBpm={activeBpm} isSimulating={isSimulating} />
+          <RealtimeECGChart
+            simulatedBpm={activeBpm}
+            isSimulating={isSimulating}
+            isConnected={connectionState.connected}
+            rawTelemetry={rawTelemetry}
+          />
         </ScrollReveal>
         <ScrollReveal delay={250} className="lg:col-span-6">
           <TrendChart mock24hData={mock24hData} mock7DaysTrend={mock7DaysTrend} />
@@ -162,7 +177,10 @@ export default function Dashboard({
 
         {activeSubTab === 'IMU' && (
           <ScrollReveal delay={100}>
-            <IMUMotionChart />
+            <IMUMotionChart
+              isConnected={connectionState.connected}
+              rawTelemetry={rawTelemetry}
+            />
           </ScrollReveal>
         )}
 

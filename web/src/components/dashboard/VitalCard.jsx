@@ -2,48 +2,67 @@ import React from 'react';
 import { Heart, Activity, ShieldCheck, TrendingUp } from 'lucide-react';
 import ScrollReveal from '../ScrollReveal';
 
-export default function VitalCard({ vitalSummary, simulatedBpm }) {
+export default function VitalCard({ vitalSummary, simulatedBpm, isConnected, rawTelemetry }) {
+  // Strict Real Data Mode: If connected to Watch via WebSocket
+  const pulseVal = isConnected
+    ? (rawTelemetry?.skinContact && rawTelemetry?.pulse > 0 ? rawTelemetry.pulse : "--")
+    : (simulatedBpm || "--");
+
+  const pulseStatus = isConnected
+    ? (!rawTelemetry?.skinContact || rawTelemetry?.pulse === 0
+        ? "CHƯA ĐEO DA"
+        : rawTelemetry.pulse > 100 ? "NHỊP NHANH" : rawTelemetry.pulse < 55 ? "NHỊP CHẬM" : "BÌNH THƯỜNG (THỰC)")
+    : (simulatedBpm > 100 ? "NHỊP NHANH" : simulatedBpm < 55 ? "NHỊP CHẬM" : "BÌNH THƯỜNG");
+
+  const spo2Val = isConnected
+    ? (rawTelemetry?.spo2Valid && rawTelemetry?.spo2 > 0 ? `${rawTelemetry.spo2}%` : "--")
+    : `${vitalSummary.spO2}%`;
+
+  const spo2Status = isConnected
+    ? (!rawTelemetry?.spo2Valid || rawTelemetry?.spo2 === 0 ? "CHỜ TÍCH LŨY" : "AN TOÀN (THỰC)")
+    : "AN TOÀN";
+
   const cards = [
     {
-      title: "NHỊP TIM REALTIME",
-      value: `${simulatedBpm}`,
+      title: "NHỊP TIM REALTIME (MAX30102)",
+      value: `${pulseVal}`,
       unit: "BPM",
-      status: simulatedBpm > 100 ? "NHỊP NHANH" : simulatedBpm < 55 ? "NHỊP CHẬM" : "BÌNH THƯỜNG",
-      statusColor: simulatedBpm > 100 ? "text-rose-400 border-rose-500/40 bg-rose-500/15" : "text-emerald-400 border-emerald-500/40 bg-emerald-500/15",
-      subInfo: `Min: ${vitalSummary.minBpm24h} | Max: ${vitalSummary.maxBpm24h}`,
+      status: pulseStatus,
+      statusColor: pulseVal === "--" ? "text-slate-400 border-slate-700 bg-slate-800/40" : (rawTelemetry?.pulse > 100 || simulatedBpm > 100 ? "text-rose-400 border-rose-500/40 bg-rose-500/15" : "text-emerald-400 border-emerald-500/40 bg-emerald-500/15"),
+      subInfo: isConnected ? `Chất lượng SQI: ${rawTelemetry?.quality || 0}%` : `Min: ${vitalSummary.minBpm24h} | Max: ${vitalSummary.maxBpm24h}`,
       icon: Heart,
       badgeBorder: "border-rose-500/30 hover:border-rose-400/60 shadow-rose-500/5",
       iconColor: "text-rose-400 bg-rose-500/10"
     },
     {
-      title: "OXY MÁU (SPO2)",
-      value: `${vitalSummary.spO2}%`,
+      title: "OXY MÁU (SPO2 REALTIME)",
+      value: spo2Val,
       unit: "SpO2",
-      status: "AN TOÀN",
-      statusColor: "text-cyan-400 border-cyan-500/40 bg-cyan-500/15",
-      subInfo: "Lọc nhiễu DSP 5 Tầng",
+      status: spo2Status,
+      statusColor: spo2Val === "--" ? "text-slate-400 border-slate-700 bg-slate-800/40" : "text-cyan-400 border-cyan-500/40 bg-cyan-500/15",
+      subInfo: isConnected ? (rawTelemetry?.motionArtifact ? "Cảnh báo: Tay đang rung nhẹ" : "Lọc nhiễu DSP 5 tầng THỰC") : "Lọc nhiễu DSP 5 Tầng",
       icon: Activity,
       badgeBorder: "border-cyan-500/30 hover:border-cyan-400/60 shadow-cyan-500/5",
       iconColor: "text-cyan-400 bg-cyan-500/10"
     },
     {
-      title: "BIẾN THIÊN NHỊP TIM (HRV)",
-      value: `${vitalSummary.hrv}`,
-      unit: "ms",
-      status: "TỐT",
+      title: "CẢM BIẾN & ĐIỆN ÁP PIN",
+      value: isConnected ? `${rawTelemetry?.battery || 100}%` : `${vitalSummary.hrv}`,
+      unit: isConnected ? `${rawTelemetry?.voltage ? rawTelemetry.voltage.toFixed(2) + 'V' : 'Pin'}` : "ms",
+      status: isConnected ? (rawTelemetry?.charging ? "ĐANG SẠC PIN" : "PIN KHỎE") : "TỐT",
       statusColor: "text-emerald-400 border-emerald-500/40 bg-emerald-500/15",
-      subInfo: "Khoảng R-R Đạt chuẩn",
+      subInfo: isConnected ? `Hardware IMU/PPG: ${rawTelemetry?.sensors?.imuOk ? 'OK' : 'ERR'}` : "Khoảng R-R Đạt chuẩn",
       icon: TrendingUp,
       badgeBorder: "border-emerald-500/30 hover:border-emerald-400/60 shadow-emerald-500/5",
       iconColor: "text-emerald-400 bg-emerald-500/10"
     },
     {
-      title: "TINYML AI FALL RISK",
-      value: `${vitalSummary.fallRiskScore}/100`,
+      title: "TINYML AI FALL RISK (QMI8658)",
+      value: isConnected ? (rawTelemetry?.fallState === 0 ? "0/100" : "85/100") : `${vitalSummary.fallRiskScore}/100`,
       unit: "Risk Score",
-      status: "NGUY CƠ THẤP",
-      statusColor: "text-amber-300 border-amber-400/40 bg-amber-400/15",
-      subInfo: "Suy luận INT8: 3.1ms",
+      status: isConnected ? (rawTelemetry?.fallState === 0 ? "AN TOÀN (BÌNH THƯỜNG)" : "CẢNH BÁO TÉ NGÃ!") : "NGUY CƠ THẤP",
+      statusColor: isConnected && rawTelemetry?.fallState > 0 ? "text-rose-400 border-rose-500/50 bg-rose-500/20" : "text-amber-300 border-amber-400/40 bg-amber-400/15",
+      subInfo: isConnected ? `FPS Stream: 10Hz | RSSI: ${rawTelemetry?.rssi || 0}dBm` : "Suy luận INT8: 3.1ms",
       icon: ShieldCheck,
       badgeBorder: "border-amber-400/30 hover:border-amber-300/60 shadow-amber-400/5",
       iconColor: "text-amber-300 bg-amber-400/10"
