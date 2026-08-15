@@ -102,12 +102,19 @@
 #define PPG_CONTACT_IR_RELEASE   13000UL
 
 // How many consecutive sub-threshold samples mean the finger really left, as
-// opposed to a twitch. 100 samples at 200 Hz is half a second.
+// opposed to a twitch. 200 samples at 200 Hz is one second.
 //
 // This is what makes a four-second SpO2 window achievable at all: that window
 // is 800 raw samples, and requiring all 800 to be perfect is a standard no real
 // finger meets.
-#define PPG_CONTACT_GAP_SAMPLES  100
+//
+// Was 100 here while max30102_service.cpp compared against a literal 200. The
+// firmware's one-second debounce was the deliberate behaviour -- a wrist shifts
+// under the strap constantly and half a second dropped the reading to zero on
+// ordinary movement -- so the constant is corrected to the value in use rather
+// than the code to the constant. Before this, editing the figure below changed
+// nothing at all.
+#define PPG_CONTACT_GAP_SAMPLES  200
 
 // Above this accelerometer standard deviation (in g) the arm is moving too
 // much for the PPG waveform to mean anything.
@@ -395,6 +402,29 @@
 // ---------------------------------------------------------------------------
 // Clinical Thresholds for Alerts & Color Coding (Strictly for Notifications, NEVER Hardcoded Measurements)
 // ---------------------------------------------------------------------------
+//
+// NOT WIRED UP. Every constant in this block is unreferenced by the firmware --
+// verified by grepping the whole of src/ -- and the web dashboard classifies
+// from its own numbers rather than reading these. Editing them changes nothing
+// on the device today.
+//
+// What actually decides an alert is the older set above:
+//
+//     VITAL_HR_HIGH   130      vs  ALERT_HR_TACHYCARDIA_BPM      110
+//     VITAL_HR_LOW    45       vs  ALERT_HR_BRADYCARDIA_BPM      50
+//     VITAL_SPO2_LOW  90       vs  ALERT_SPO2_MILD_HYPOXIA_PCT   94
+//     BATTERY_LOW_PCT 15       vs  ALERT_BATTERY_LOW_PCT         20
+//
+// The two sets disagree in the same direction every time: the live thresholds
+// are the more permissive ones, so the watch is quieter than this block reads
+// as promising. A tachycardia at 115 BPM or an SpO2 of 92% passes in silence.
+//
+// They are kept rather than deleted because the graded scheme is the better
+// design -- mild versus severe hypoxia deserve different responses, which the
+// single VITAL_SPO2_LOW cannot express. Adopting it is a clinical decision
+// about who gets woken at 3 a.m., not a tidy-up, so it is left for whoever
+// makes that call. Until then this comment is here so nobody reads the block
+// and believes the device behaves as it describes.
 #define ALERT_HR_BRADYCARDIA_BPM      50    // Heart rate below 50 BPM -> Bradycardia warning
 #define ALERT_HR_TACHYCARDIA_BPM      110   // Heart rate above 110 BPM -> Tachycardia warning
 #define ALERT_HR_CRITICAL_HIGH_BPM    130   // Heart rate above 130 BPM -> Critical high warning

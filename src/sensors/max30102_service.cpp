@@ -144,6 +144,19 @@ static void resetMeasurement() {
 
 void initMAX30102Service() {
     Serial.println(" -> Initializing MAX30102 Pulse Oximeter & Heart Rate Sensor...");
+
+    // Claim the pins before handing the bus to the library.
+    //
+    // MAX30105::begin() calls _i2cPort->begin() with no arguments, so Wire1
+    // would come up on the core's default pins rather than the ones named in
+    // app_config.h. It worked only because those defaults happen to match this
+    // board; I2C2_SDA_PIN and I2C2_SCL_PIN were decorative, and editing them
+    // would have moved nothing. TwoWire::begin() is idempotent on ESP32 -- the
+    // library's later pinless call finds the bus already up and leaves the pin
+    // assignment alone -- so binding here makes the config the single source of
+    // truth without fighting the library.
+    Wire1.begin(I2C2_SDA_PIN, I2C2_SCL_PIN, 400000);
+
     if (particleSensor.begin(Wire1, I2C_SPEED_FAST)) {
         maxDetected = true;
         particleSensor.setup(MAX30102_LED_BRIGHTNESS, 1, 2, 200, 411, 4096);
@@ -197,7 +210,7 @@ void updateMAX30102Service() {
         // Contact detection with 1.0s release debounce
         if (ir < (g_watchState.skinContact ? PPG_CONTACT_IR_RELEASE : PPG_CONTACT_IR_THRESHOLD)) {
             if (g_watchState.skinContact) {
-                if (++contactGapSamples >= 200) {
+                if (++contactGapSamples >= PPG_CONTACT_GAP_SAMPLES) {
                     g_watchState.skinContact = false;
                     contactGapSamples = 0;
                     resetMeasurement();

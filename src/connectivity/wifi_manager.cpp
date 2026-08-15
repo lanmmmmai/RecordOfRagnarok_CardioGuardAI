@@ -13,7 +13,14 @@ void syncNTPTimeService() {
         ntpRequested = true;
         setenv("TZ", "ICT-7", 1);
         tzset();
-        configTime(7 * 3600, 0, "vn.pool.ntp.org", "pool.ntp.org", "time.google.com");
+        // GMT_OFFSET_SECONDS and NTP_SERVER_PRIMARY rather than the literals
+        // they duplicate: both were defined in app_config.h and referenced
+        // nowhere, so the offset existed in two places that could drift apart
+        // silently. Same values, so the behaviour is unchanged. The Vietnamese
+        // pool stays first -- it is the closest stratum-2 set -- with the
+        // global pool and Google as fallbacks.
+        configTime(GMT_OFFSET_SECONDS, DAYLIGHT_OFFSET_SECONDS,
+                   "vn.pool.ntp.org", NTP_SERVER_PRIMARY, "time.google.com");
         Serial.println(" -> NTP request sent (Vietnam UTC+7 ICT-7), waiting for the clock in the background.");
         return;
     }
