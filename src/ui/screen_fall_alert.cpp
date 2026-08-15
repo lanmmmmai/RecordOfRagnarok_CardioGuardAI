@@ -41,6 +41,13 @@ void renderFallAlertScreen(TFT_eSprite& spr) {
         spr.setTextColor(UI_COLOR_WHITE, UI_COLOR_CRITICAL);
         spr.drawString("HỦY CẢNH BÁO", SCREEN_CENTER_X, btnY + 20, 2);
 
+        // The swipe is the easier of the two ways out for a shaking hand, so it
+        // is worth a line telling the wearer it exists. Below the button, small
+        // and grey: the button is still the primary affordance.
+        vnFont(spr, VN_SMALL);
+        spr.setTextColor(UI_COLOR_SECONDARY, UI_COLOR_BLACK);
+        spr.drawString("hoặc vuốt để hủy", SCREEN_CENTER_X, 216, 1);
+
     } else if (g_watchState.fallState == FALL_STATE_SENDING) {
         // ==========================================
         // SENDING EMERGENCY ALERT

@@ -76,6 +76,35 @@ void handleUITouchInput(int touchX, int touchY, uint8_t gestureID) {
         if (carousel[i] == screen) { pos = i; break; }
     }
 
+    // The fall alert is not on the carousel, so swipes cannot navigate away
+    // from it. A swipe there means one specific thing instead: cancel.
+    //
+    // The tap target stays the tight 160x40 button, deliberately -- see the
+    // comment on that hit box below. This adds a second way out rather than
+    // loosening the first, because those two gestures fail in opposite
+    // directions. A knock against a table or a floor produces a tap, which is
+    // why the tap target has to stay small; it does not produce a directional
+    // swipe. So the swipe can be generous where the tap must not be, and it is
+    // the easier of the two for someone who has just fallen and whose hand is
+    // shaking: a rough drag anywhere on the glass, no aiming.
+    //
+    // Any direction counts. Requiring a particular one would mean an alert
+    // dismissed by luck of which way the hand moved.
+    if (screen == SCREEN_FALL_ALERT) {
+        bool swipe = (gestureID == 0x01 || gestureID == 0x02 ||
+                      gestureID == 0x03 || gestureID == 0x04);
+        if (swipe && (g_watchState.fallState == FALL_STATE_ALERT ||
+                      g_watchState.fallState == FALL_STATE_SENT ||
+                      g_watchState.fallState == FALL_STATE_FAILED)) {
+            // FALL_STATE_SENDING is missing on purpose: the message is going
+            // out over the air right now and there is nothing to cancel. It is
+            // also the state where a stray gesture is most likely, since the
+            // wearer is probably still moving.
+            cancelFallAlert();
+        }
+        return;
+    }
+
     if (gestureID == 0x03) { // SWIPE LEFT -- forward, wrapping
         if (pos >= 0) g_watchState.currentScreen = carousel[(pos + 1) % carouselLen];
     }
@@ -97,16 +126,27 @@ void handleUITouchInput(int touchX, int touchY, uint8_t gestureID) {
     }
     else if (gestureID == 0x05) { // SINGLE CLICK / TAP ONLY
         if (screen == SCREEN_HOME) {
-            // Tap BPM Area (Left) -> Open Heart Rate Screen
-            if (touchX >= 20 && touchX <= 115 && touchY >= 140 && touchY <= 185) {
-                g_watchState.currentScreen = SCREEN_HEART_RATE;
+            // The metrics row, split down the middle at x=120 with no gap.
+            //
+            // screen_home.cpp draws the BPM string centred on x=76 and the SpO2
+            // string on x=164, both at y=166. The hit boxes used to be
+            // x=20..115 and x=125..220, which left a 10 px dead lane between
+            // them and started the left box at x=20 -- outside the glass at
+            // this height, since the 240 px circle has narrowed to roughly
+            // x=38..202 by y=166. So the boxes were simultaneously too wide to
+            // be reachable and too narrow to be contiguous.
+            //
+            // Splitting at the centre line removes the dead lane: below y=150
+            // every tap lands on one side or the other, and which side is the
+            // only thing the wearer has to get right.
+            if (touchY >= 150 && touchY <= 183) {
+                g_watchState.currentScreen =
+                    (touchX < SCREEN_CENTER_X) ? SCREEN_HEART_RATE : SCREEN_SPO2;
             }
-            // Tap SpO2 Area (Right) -> Open SpO2 Screen
-            else if (touchX >= 125 && touchX <= 220 && touchY >= 140 && touchY <= 185) {
-                g_watchState.currentScreen = SCREEN_SPO2;
-            }
-            // Tap Fall Status Pill -> Open Fall Monitor
-            else if (touchY >= 186 && touchY <= 230) {
+            // Tap the fall status pill -> fall monitor. The pill is drawn at
+            // y=186..212; the box runs to 230 so the rounded ends and the strip
+            // under them stay live.
+            else if (touchY >= 184 && touchY <= 230) {
                 g_watchState.currentScreen = SCREEN_FALL_MONITOR;
             }
         }
@@ -132,8 +172,14 @@ void handleUITouchInput(int touchX, int touchY, uint8_t gestureID) {
             }
         }
         else if (screen == SCREEN_QUICK_MENU) {
-            // SOS button, matching the rect drawn at (40,104) size 46x44.
-            if (touchX >= 40 && touchX <= 86 && touchY >= 104 && touchY <= 148) {
+            // SOS tile, matching the rect screen_quick_menu.cpp actually draws:
+            // (38,98) size 48x42, so (38,98)-(86,140). The box here said
+            // (40,104)-(86,148), which killed the top 6 px of the tile and made
+            // 8 px of blank space below it fire an emergency alert. Both halves
+            // of that are bad on this particular button -- a wearer pressing
+            // the top edge of SOS and getting nothing, and a wearer aiming
+            // below it and summoning help by accident.
+            if (touchX >= 38 && touchX <= 86 && touchY >= 98 && touchY <= 140) {
                 triggerSimulatedFall();
             } else {
                 g_watchState.currentScreen = SCREEN_HOME;
