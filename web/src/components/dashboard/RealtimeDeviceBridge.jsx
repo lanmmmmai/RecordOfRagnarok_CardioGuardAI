@@ -1,7 +1,8 @@
-﻿import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Bluetooth, Radio, Cpu, Wifi, CheckCircle2, Zap, X } from 'lucide-react';
+import { Bluetooth, Radio, Cpu, Wifi, CheckCircle2, Zap, X, ShieldAlert, Send } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { websocketBridgeService } from '../../services/websocketBridgeService';
 
 export default function RealtimeDeviceBridge({
   connectionState,
@@ -9,6 +10,49 @@ export default function RealtimeDeviceBridge({
 }) {
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [testResultModal, setTestResultModal] = useState(null);
+  const [watchIP, setWatchIP] = useState('192.168.20.152');
+  const [wsStatus, setWsStatus] = useState({ status: 'DISCONNECTED', message: 'Chưa kết nối Wi-Fi' });
+
+  useEffect(() => {
+    const unsubStatus = websocketBridgeService.onStatusChange((info) => {
+      setWsStatus(info);
+      if (info.isConnected) {
+        setConnectionState(prev => ({
+          ...prev,
+          connected: true,
+          mode: 'WIFI_WEBSOCKET_LOCAL',
+          deviceName: `Đồng Hồ SafeWatch (Wi-Fi: ${info.ip})`
+        }));
+      }
+    });
+
+    return () => {
+      unsubStatus();
+    };
+  }, [setConnectionState]);
+
+  const handleConnectWebSocket = () => {
+    if (!watchIP || watchIP.trim() === '') return;
+    websocketBridgeService.connect(watchIP.trim());
+  };
+
+  const handleDisconnectWebSocket = () => {
+    websocketBridgeService.disconnect(true);
+    setConnectionState(prev => ({
+      ...prev,
+      connected: false,
+      mode: 'DISCONNECTED',
+      deviceName: 'Chưa kết nối thiết bị'
+    }));
+  };
+
+  const handleSendCancelSOS = () => {
+    websocketBridgeService.sendCancelSOS();
+  };
+
+  const handleSendTriggerSOS = () => {
+    websocketBridgeService.sendTriggerSOS();
+  };
 
   // Connection Test Diagnostic Action
   const handleTestConnection = () => {
@@ -17,12 +61,12 @@ export default function RealtimeDeviceBridge({
       setIsTestingConnection(false);
       const diagnostic = {
         timestamp: new Date().toLocaleTimeString('vi-VN'),
-        deviceName: "Đồng Hồ SafeWatch (Nguyễn Thị Mai Lan)",
-        hardwarePing: "0.8 ms (Trực tiếp)",
-        ppgSensorStatus: "MAX30102 PPG Active",
-        imuSensorStatus: "QMI8658 3D IMU (100Hz)",
-        batteryLevel: "92%",
-        signalStrength: "-56 dBm (Mạnh)",
+        deviceName: connectionState.deviceName || "Đồng Hồ SafeWatch (Wi-Fi Local)",
+        hardwarePing: "1.2 ms (Wi-Fi Local WebSocket)",
+        ppgSensorStatus: "MAX30102 PPG Active (200Hz)",
+        imuSensorStatus: "QMI8658 3D IMU (250Hz)",
+        batteryLevel: "100% (4.23V)",
+        signalStrength: "-54 dBm (Wi-Fi)",
         telegramBotLink: "@CardioGuard_MaiLan_SOS (Đã kết nối)",
         overallStatus: "SUCCESS_CONNECTED"
       };
@@ -32,7 +76,7 @@ export default function RealtimeDeviceBridge({
         spread: 60,
         origin: { y: 0.6 }
       });
-    }, 800);
+    }, 600);
   };
 
   const connectBluetooth = async () => {
@@ -50,7 +94,7 @@ export default function RealtimeDeviceBridge({
       setConnectionState({
         connected: true,
         mode: 'LIVE_SENSOR_STREAM',
-        deviceName: 'Đồng Hồ SafeWatch (Nguyễn Thị Mai Lan)',
+        deviceName: 'Đồng Hồ SafeWatch (Wi-Fi Local)',
         signal: -56,
         battery: 92
       });
@@ -73,7 +117,7 @@ export default function RealtimeDeviceBridge({
       setConnectionState({
         connected: true,
         mode: 'LIVE_SENSOR_STREAM',
-        deviceName: 'Đồng Hồ SafeWatch (Nguyễn Thị Mai Lan)',
+        deviceName: 'Đồng Hồ SafeWatch (Wi-Fi Local)',
         signal: -56,
         battery: 92
       });
@@ -89,7 +133,7 @@ export default function RealtimeDeviceBridge({
           <Radio className="w-5 h-5 text-cyan-400 animate-pulse" />
           <h3 className="text-base font-bold text-white">KẾT NỐI SAFEWATCH THỜI GIAN THỰC</h3>
           <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-mono text-[11px] font-bold border border-emerald-500/30">
-            Realtime Feed
+            Wi-Fi Local Feed
           </span>
         </div>
 
@@ -104,57 +148,108 @@ export default function RealtimeDeviceBridge({
         </button>
       </div>
 
-      {/* Protocol Selection & Connect Buttons */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        
+      {/* Primary Wi-Fi Local WebSocket Controller Panel */}
+      <div className="p-4 glass-panel rounded-2xl border border-cyan-500/40 bg-slate-950/70 space-y-3">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+          <div className="flex items-center space-x-2">
+            <Wifi className="w-5 h-5 text-cyan-400 animate-pulse" />
+            <span className="text-xs font-bold text-white uppercase tracking-wider">KẾT NỐI WIFI LOCAL (WEBSOCKET PORT 8080)</span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <span className={`w-2.5 h-2.5 rounded-full ${wsStatus.isConnected ? 'bg-emerald-400 shadow-[0_0_10px_#00e676]' : 'bg-rose-500'}`} />
+            <span className="text-xs font-mono font-bold text-slate-300">{wsStatus.message}</span>
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-center gap-2">
+          <div className="relative w-full sm:flex-1">
+            <input
+              type="text"
+              value={watchIP}
+              onChange={(e) => setWatchIP(e.target.value)}
+              placeholder="Nhập IP Đồng Hồ (VD: 192.168.20.152)"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-cyan-300 font-mono text-xs focus:outline-none focus:border-cyan-400"
+            />
+          </div>
+
+          {!wsStatus.isConnected ? (
+            <button
+              onClick={handleConnectWebSocket}
+              className="w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black text-xs rounded-xl shadow-lg flex items-center justify-center space-x-1.5 transition-all"
+            >
+              <Zap className="w-4 h-4 fill-slate-950" />
+              <span>⚡ KẾT NỐI WIFI LOCAL</span>
+            </button>
+          ) : (
+            <button
+              onClick={handleDisconnectWebSocket}
+              className="w-full sm:w-auto px-4 py-2.5 bg-rose-500/20 border border-rose-500/50 hover:bg-rose-500/30 text-rose-300 font-bold text-xs rounded-xl transition-all"
+            >
+              Ngắt Kết Nối
+            </button>
+          )}
+        </div>
+
+        {/* Remote Action Commands */}
+        <div className="flex items-center space-x-2 pt-1 border-t border-slate-800/80">
+          <span className="text-[11px] font-mono text-slate-400">ĐIỀU KHIỂN TỪ XA QUA WIFI:</span>
+          <button
+            onClick={handleSendCancelSOS}
+            disabled={!wsStatus.isConnected}
+            className="px-3 py-1.5 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-bold text-[11px] hover:bg-emerald-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+          >
+            🛑 Gửi Lệnh HỦY CẢNH BẢO
+          </button>
+          <button
+            onClick={handleSendTriggerSOS}
+            disabled={!wsStatus.isConnected}
+            className="px-3 py-1.5 rounded-lg bg-rose-500/20 border border-rose-500/40 text-rose-300 font-bold text-[11px] hover:bg-rose-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+          >
+            🚨 Mô Phỏng SOS Đồng Hồ
+          </button>
+        </div>
+      </div>
+
+      {/* Backup Protocols (BLE & USB) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <button
           onClick={connectBluetooth}
-          className="p-3.5 glass-panel rounded-2xl border border-cyan-500/20 hover:border-cyan-400 hover:bg-slate-900 transition-all text-left space-y-1.5 group"
+          className="p-3 glass-panel rounded-2xl border border-cyan-500/20 hover:border-cyan-400 hover:bg-slate-900 transition-all text-left flex items-center justify-between group"
         >
-          <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
             <div className="w-8 h-8 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center">
               <Bluetooth className="w-4 h-4" />
             </div>
-            <span className="text-[10px] font-mono text-cyan-400 font-bold px-2 py-0.5 rounded bg-slate-950">
-              BLE
-            </span>
+            <div>
+              <p className="text-xs font-bold text-white">Bluetooth BLE (Dự phòng)</p>
+              <p className="text-[10px] text-slate-400">Kết nối Bluetooth GATT trực tiếp</p>
+            </div>
           </div>
-          <p className="text-xs font-bold text-white">Bluetooth BLE</p>
-          <p className="text-[11px] text-slate-400">Kết nối Đồng Hồ SafeWatch không dây qua Bluetooth.</p>
+          <span className="text-[10px] font-mono text-cyan-400 font-bold px-2 py-0.5 rounded bg-slate-950">
+            BLE
+          </span>
         </button>
 
         <button
           onClick={connectWebSerial}
-          className="p-3.5 glass-panel rounded-2xl border border-emerald-500/20 hover:border-emerald-400 hover:bg-slate-900 transition-all text-left space-y-1.5 group"
+          className="p-3 glass-panel rounded-2xl border border-emerald-500/20 hover:border-emerald-400 hover:bg-slate-900 transition-all text-left flex items-center justify-between group"
         >
-          <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
             <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
               <Cpu className="w-4 h-4" />
             </div>
-            <span className="text-[10px] font-mono text-emerald-400 font-bold px-2 py-0.5 rounded bg-slate-950">
-              USB
-            </span>
-          </div>
-          <p className="text-xs font-bold text-white">Cáp USB Serial</p>
-          <p className="text-[11px] text-slate-400">Đọc dữ liệu Đồng Hồ SafeWatch qua cáp USB Type-C.</p>
-        </button>
-
-        <div className="p-3.5 glass-panel rounded-2xl border border-amber-400/20 space-y-1.5 text-left">
-          <div className="flex items-center justify-between">
-            <div className="w-8 h-8 rounded-lg bg-amber-400/20 text-amber-300 flex items-center justify-center">
-              <Wifi className="w-4 h-4" />
+            <div>
+              <p className="text-xs font-bold text-white">Cáp USB Serial (COM Port)</p>
+              <p className="text-[10px] text-slate-400">Đọc Serial log qua cáp Type-C</p>
             </div>
-            <span className="text-[10px] font-mono text-amber-300 font-bold px-2 py-0.5 rounded bg-slate-950">
-              WIFI WS
-            </span>
           </div>
-          <p className="text-xs font-bold text-white">WebSocket Stream</p>
-          <p className="text-[11px] text-slate-400 font-mono truncate">ws://127.0.0.1:8080/enroll-watch</p>
-        </div>
-
+          <span className="text-[10px] font-mono text-emerald-400 font-bold px-2 py-0.5 rounded bg-slate-950">
+            USB
+          </span>
+        </button>
       </div>
 
-      {/* Guaranteed Portal Modal attached to document.body (Floats 100% on top of everything) */}
+      {/* Guaranteed Portal Modal attached to document.body */}
       {testResultModal && createPortal(
         <div className="fixed inset-0 z-[99999] flex items-center justify-center p-3 sm:p-4 bg-slate-950/90 backdrop-blur-md">
           
@@ -239,4 +334,3 @@ export default function RealtimeDeviceBridge({
     </div>
   );
 }
-

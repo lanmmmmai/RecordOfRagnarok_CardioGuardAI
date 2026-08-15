@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import DashboardHeader from './DashboardHeader';
 import VitalCard from './VitalCard';
 import RealtimeDeviceBridge from './RealtimeDeviceBridge';
@@ -11,6 +11,7 @@ import DataCollectorModule from './DataCollectorModule';
 import TelegramLiveLogsModule from './TelegramLiveLogsModule';
 import ClinicalReportModal from './ClinicalReportModal';
 import ScrollReveal from '../ScrollReveal';
+import { websocketBridgeService } from '../../services/websocketBridgeService';
 
 import { Database, Compass, History } from 'lucide-react';
 
@@ -28,13 +29,33 @@ export default function Dashboard({
 }) {
   const [isClinicalReportOpen, setIsClinicalReportOpen] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState('COLLECTOR'); // COLLECTOR, IMU, LOGS
+  const [liveBpm, setLiveBpm] = useState(simulatedBpm);
   const [connectionState, setConnectionState] = useState({
-    connected: true,
-    mode: 'WEB_BLUETOOTH_BLE',
-    deviceName: 'Đồng Hồ SafeWatch (Nguyễn Thị Mai Lan)',
+    connected: false,
+    mode: 'DISCONNECTED',
+    deviceName: 'Chưa kết nối thiết bị',
     signal: -54,
     battery: 92
   });
+
+  useEffect(() => {
+    const unsubTelemetry = websocketBridgeService.onTelemetry((data) => {
+      if (data && data.pulse) {
+        setLiveBpm(data.pulse);
+      }
+    });
+
+    const unsubFall = websocketBridgeService.onFallAlert((data) => {
+      if (onTriggerSOS) onTriggerSOS();
+    });
+
+    return () => {
+      unsubTelemetry();
+      unsubFall();
+    };
+  }, [onTriggerSOS]);
+
+  const activeBpm = connectionState.connected ? liveBpm : simulatedBpm;
 
   const handleOpenReport = () => {
     setIsClinicalReportOpen(true);
@@ -48,7 +69,7 @@ export default function Dashboard({
       <ScrollReveal delay={0}>
         <DashboardHeader
           userProfile={userProfile}
-          simulatedBpm={simulatedBpm}
+          simulatedBpm={activeBpm}
           isSimulating={isSimulating}
           setIsSimulating={setIsSimulating}
           onTriggerSOS={onTriggerSOS}
@@ -58,7 +79,7 @@ export default function Dashboard({
 
       {/* 2. Core Vitals Grid */}
       <ScrollReveal delay={100}>
-        <VitalCard vitalSummary={vitalSummary} simulatedBpm={simulatedBpm} />
+        <VitalCard vitalSummary={vitalSummary} simulatedBpm={activeBpm} />
       </ScrollReveal>
 
       {/* 3. Realtime Hardware Bridge & Diagnostics */}
@@ -72,7 +93,7 @@ export default function Dashboard({
       {/* 4. Live ECG Waveform Oscilloscope & 24h/7d Trends (2 Columns) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <ScrollReveal delay={200} className="lg:col-span-6">
-          <RealtimeECGChart simulatedBpm={simulatedBpm} isSimulating={isSimulating} />
+          <RealtimeECGChart simulatedBpm={activeBpm} isSimulating={isSimulating} />
         </ScrollReveal>
         <ScrollReveal delay={250} className="lg:col-span-6">
           <TrendChart mock24hData={mock24hData} mock7DaysTrend={mock7DaysTrend} />
@@ -131,10 +152,10 @@ export default function Dashboard({
         {activeSubTab === 'COLLECTOR' && (
           <>
             <ScrollReveal delay={100}>
-              <DataCollectorModule simulatedBpm={simulatedBpm} />
+              <DataCollectorModule simulatedBpm={activeBpm} />
             </ScrollReveal>
             <ScrollReveal delay={150}>
-              <TelegramLiveLogsModule userProfile={userProfile} simulatedBpm={simulatedBpm} onLogEvent={eventLogs} />
+              <TelegramLiveLogsModule userProfile={userProfile} simulatedBpm={activeBpm} onLogEvent={eventLogs} />
             </ScrollReveal>
           </>
         )}
@@ -166,4 +187,3 @@ export default function Dashboard({
     </div>
   );
 }
-
