@@ -136,7 +136,7 @@ static bool detectBeatAdaptive(uint32_t ir) {
     if (acSignal > g_prevAc) {
         g_rising = true;
     } else if (g_rising && acSignal < g_prevAc) {
-        if (g_prevAc > threshold && g_prevAc > 150.0f && g_samplesSinceBeat >= 90) {
+        if (g_prevAc > threshold && g_prevAc > 150.0f && g_samplesSinceBeat >= 116) {
             beatDetected = true;
             g_samplesSinceBeat = 0;
             g_peakAc = g_prevAc;
