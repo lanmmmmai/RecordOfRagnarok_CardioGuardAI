@@ -1,4 +1,4 @@
-// WebSocket Bridge Service with Edge-Triggered Fall Alerts and Cancel SOS
+// WebSocket Bridge Service with Instant Auto-Connect, Edge-Triggered Fall Alerts, and Immediate Status Dispatch
 
 class WebSocketBridgeService {
   constructor() {
@@ -19,15 +19,20 @@ class WebSocketBridgeService {
     if (typeof window !== 'undefined') {
       setTimeout(() => {
         this.connect();
-      }, 500);
+      }, 100);
     }
   }
 
   setIP(ipAddress) {
     if (ipAddress && ipAddress.trim() !== '') {
-      this.ip = ipAddress.trim();
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('safewatch_ip', this.ip);
+      const trimmed = ipAddress.trim();
+      if (this.ip !== trimmed) {
+        this.ip = trimmed;
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('safewatch_ip', this.ip);
+        }
+        this.disconnect(false);
+        this.connect();
       }
     }
   }
@@ -77,7 +82,7 @@ class WebSocketBridgeService {
           this.reconnectTimer = setTimeout(() => {
             this.reconnectTimer = null;
             this.connect();
-          }, 2500);
+          }, 1500);
         }
       };
     } catch (err) {
@@ -86,7 +91,7 @@ class WebSocketBridgeService {
         this.reconnectTimer = setTimeout(() => {
           this.reconnectTimer = null;
           this.connect();
-        }, 2500);
+        }, 1500);
       }
     }
   }
@@ -141,7 +146,7 @@ class WebSocketBridgeService {
       this.latestTelemetry = telemetry;
       this.telemetryListeners.forEach(fn => fn(telemetry));
 
-      // CRITICAL FIX: Only fire fall alert listeners on EDGE TRIGGER (rising edge)
+      // Only fire fall alert listeners on EDGE TRIGGER (rising edge)
       if (data.type === 'fall_alert' || (currentFallState >= 2 && this.lastFallState < 2)) {
         console.log('[WebSocket Bridge] 🚨 New Fall Incident Alert (Edge Triggered)');
         this.fallAlertListeners.forEach(fn => fn(data));
@@ -179,6 +184,13 @@ class WebSocketBridgeService {
 
   onStatusChange(fn) {
     this.statusListeners.add(fn);
+    // Immediately invoke with current connection state
+    fn({
+      status: this.isConnected ? 'CONNECTED' : 'DISCONNECTED',
+      message: this.isConnected ? `Đã tự động kết nối SafeWatch (${this.ip})` : `Đang tự động dò tìm đồng hồ SafeWatch (${this.ip})...`,
+      isConnected: this.isConnected,
+      ip: this.ip
+    });
     return () => this.statusListeners.delete(fn);
   }
 
