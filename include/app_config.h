@@ -136,6 +136,25 @@
 #define PPG_MIN_SQI              20
 
 // ---------------------------------------------------------------------------
+// Physiological threshold alerts
+// ---------------------------------------------------------------------------
+
+// Screening thresholds, not diagnostic ones. Deliberately wide: a resting adult
+// sits well inside them, and exercise or a nap should not page the family.
+#define VITAL_HR_HIGH            130
+#define VITAL_HR_LOW             45
+#define VITAL_SPO2_LOW           90
+
+// The condition must hold continuously for this long. One stray reading is not
+// a medical event, and the timer resets the moment the condition clears.
+#define VITAL_SUSTAIN_MS         5000UL
+
+// Minimum gap between two messages about the same condition. Somebody whose
+// SpO2 sits low for an hour needs help, not hundreds of identical alerts --
+// and a flooded chat is a chat people stop reading.
+#define VITAL_REPEAT_MS          600000UL
+
+// ---------------------------------------------------------------------------
 // Physical SOS button
 // ---------------------------------------------------------------------------
 

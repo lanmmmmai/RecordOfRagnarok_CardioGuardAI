@@ -13,6 +13,7 @@
 
 #include "fall_detection/fall_detector.h"
 #include "input/sos_button.h"
+#include "health/vital_monitor.h"
 #include "connectivity/wifi_manager.h"
 #include "connectivity/alert_dispatcher.h"
 #include "connectivity/ble_service.h"
@@ -105,6 +106,7 @@ void setup() {
     initQMI8658Service();
     initMAX30102Service();
     initFallDetector();
+    initVitalMonitor();
     initAlertDispatcher();
 
     // Initialize UI Manager & Double Buffer Sprite
@@ -147,6 +149,10 @@ void loop() {
     if (now - lastUptimeTick >= 1000) {
         lastUptimeTick = now;
         g_watchState.uptimeSec = now / 1000;
+
+        // Once a second is plenty: the shortest thing it can react to is a
+        // five-second sustained breach.
+        updateVitalMonitor();
 
         struct tm timeinfo;
         // Zero timeout: NTP has already written the RTC, so this is a local
