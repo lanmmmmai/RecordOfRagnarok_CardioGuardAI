@@ -55,16 +55,37 @@
 
 // Minimum IR reading that counts as skin contact.
 //
-// Measured on this unit with LED brightness 0x5F: the sensor sitting on a desk
-// facing open air already floors at ~21,900, so the original 8,000 marked the
-// watch as "in contact with skin" at all times. Provisional value pending a
-// worn measurement -- log a session with the watch on the wrist, then set this
-// midway between the ~21,900 floor and the worn reading.
+// The original 8,000 marked the watch as "in contact with skin" at all times:
+// on this unit the sensor sitting on a desk facing open air already floored at
+// ~21,900, so nothing could ever fall below the threshold. That floor was
+// measured at LED brightness 0x5F and does NOT carry over to the 0x30 in use
+// now -- less drive current means a lower open-air floor. 25,000 comes from
+// trial on the bench at the current setting, not from a fresh measurement.
+// Still provisional: log a session with the watch actually worn, then set this
+// midway between the open-air floor and the worn reading.
 #define PPG_CONTACT_IR_THRESHOLD 25000UL
 
 // Above this accelerometer standard deviation (in g) the arm is moving too
 // much for the PPG waveform to mean anything.
 #define PPG_MOTION_STD_G         0.08f
+
+// Rate-of-change gate on the displayed heart rate. A beat that differs from
+// the current reading by more than this is treated as a mis-detection and
+// dropped.
+#define PPG_MAX_BPM_STEP         15.0f
+
+// ...but the gate compares each new beat against its own previous output, so
+// without a way out it can never recover once reality moves away from the
+// number it is holding: every new beat looks like a spike, gets rejected, and
+// leaves the stale value in place to reject the next one. That failure is
+// worse than the phantom readings the gate was added to stop, because a frozen
+// plausible number looks correct. After this many consecutive rejections the
+// next beat is accepted unconditionally and the gate re-locks around it.
+//
+// 8 beats is roughly 5-8 seconds at normal rates -- long enough that noise
+// bursts still get filtered, short enough that a real tachycardia onset shows
+// up well inside the window that matters.
+#define PPG_GATE_ESCAPE_BEATS    8
 
 // ---------------------------------------------------------------------------
 // Fall detection, wrist-worn

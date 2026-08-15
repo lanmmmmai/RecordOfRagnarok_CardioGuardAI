@@ -24,18 +24,16 @@ Mỗi dòng "Đang chạy" đều trỏ được tới file cụ thể.
 | Đo nhịp tim + SpO₂ (PPG) | ✅ Đang chạy | [max30102_service.cpp](src/sensors/max30102_service.cpp) |
 | Đo pin qua ADC | ✅ Đang chạy | [battery_monitor.cpp](src/sensors/battery_monitor.cpp) |
 | **Hiệu chuẩn ngưỡng té ngã** | ⚠️ Chưa — toàn số phỏng đoán | [app_config.h §Fall](include/app_config.h) |
-| **DSP tầng 4** — trung vị + chặn 15 BPM/s | ⚠️ Có, nhưng **thiếu van thoát** — xem cảnh báo dưới | [max30102_service.cpp:153](src/sensors/max30102_service.cpp#L153) |
+| **DSP tầng 4** — trung vị + chặn 15 BPM/nhịp + van thoát | ✅ Đang chạy | [max30102_service.cpp](src/sensors/max30102_service.cpp) |
 | **DSP tầng 5** (Kalman + chặn hiển thị theo SQI) | ❌ Chưa triển khai | Kế hoạch: SPEC §11 |
 | **Lấy mẫu PPG 200 Hz** (hiện 25 Hz hiệu dụng) | ❌ Chưa triển khai | Kế hoạch: SPEC §11 |
 | **Mô hình TinyML** (té ngã + sàng lọc nhịp) | ❌ Chưa triển khai | Kế hoạch: SPEC §9 |
 | **Nút SOS vật lý, cảnh báo pin yếu, cảnh báo ngưỡng sinh lý** | ❌ Chưa triển khai | Kế hoạch: SPEC §11 |
 
-> 🔴 **Lỗi đã biết, chưa sửa — bộ chặn nhịp tim có thể khoá cứng vĩnh viễn.**
-> [max30102_service.cpp:154](src/sensors/max30102_service.cpp#L154) loại mọi nhịp lệch quá
-> 15 BPM so với giá trị đang hiển thị, nhưng **không có van thoát**. Nếu nhịp tim thật tăng
-> vọt (lên cơn nhịp nhanh, gắng sức), mọi nhịp mới đều bị loại và số trên màn hình **đứng yên
-> mãi ở giá trị cũ** cho tới khi mất tiếp xúc da. Đúng lúc cần đo nhất thì thiết bị lại nói dối.
-> Cách sửa: đếm số lần bị loại liên tiếp, quá 8 lần thì buộc chấp nhận giá trị mới. Xếp vào Giai đoạn 5.
+> ⚠️ **Chưa có mục nào trong bảng trên được kiểm chứng trên người đeo thật.** "Đang chạy"
+> nghĩa là code chạy được trên phần cứng, không phải là số đo đã đúng. Hai việc còn nợ:
+> hiệu chuẩn ngưỡng té ngã bằng thử nghiệm thả thật, và đối chiếu nhịp tim với thiết bị
+> tham chiếu.
 
 **Danh sách hạn chế đầy đủ, xếp theo mức nghiêm trọng:**
 [SYSTEM_ARCHITECTURE_SPEC.md §11](SYSTEM_ARCHITECTURE_SPEC.md#11-hạn-chế-đã-biết--lộ-trình)
@@ -205,7 +203,7 @@ cảm ứng mỗi vòng · cảm biến 20 ms · vẽ 33 ms (~30 FPS) · pin + W
 |---|---|
 | ~~0–3~~ | ~~Xử lý bí mật rò rỉ · đưa code vào repo · sửa lỗi té ngã · viết lại tài liệu~~ ✅ |
 | **3b** | Hiệu chuẩn ngưỡng té ngã bằng thử nghiệm thật (thả xuống đệm, đọc dòng quyết định trong log) |
-| **5** | Van thoát tầng 4 · DSP tầng 5 (Kalman + SQI) · nâng PPG lên 200 Hz để đo được khoảng RR |
+| **5** | DSP tầng 5 (Kalman + SQI) · nâng PPG lên 200 Hz để đo được khoảng RR |
 | **6** | Nút SOS vật lý · cảnh báo pin yếu · cảnh báo ngưỡng sinh lý |
 | **7** | TinyML: cây quyết định té ngã (UMAFall/FallAllD + dữ liệu tự thu) · sàng lọc khoảng RR (MIT-BIH afdb) |
 | **8** | Đánh giá: ma trận nhầm lẫn, độ nhạy/đặc hiệu, ROC, so sánh với baseline 4 pha |

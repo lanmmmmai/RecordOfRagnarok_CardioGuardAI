@@ -14,6 +14,10 @@ static uint8_t rates[RATE_SIZE];
 static uint8_t rateIndex = 0;
 static unsigned long lastBeatMs = 0;
 
+// Consecutive beats thrown out by the rate-of-change gate. Reaching
+// PPG_GATE_ESCAPE_BEATS forces the next one through; see the gate itself.
+static uint8_t gateRejections = 0;
+
 // The Maxim SpO2 routine wants 100 samples at 25 Hz, which is exactly what the
 // sensor configuration below produces (100 Hz sampling, averaged by 4).
 static uint32_t irBuffer[BUFFER_SIZE];
@@ -54,6 +58,7 @@ static void resetMeasurement() {
     bufferCount = 0;
     rateIndex = 0;
     lastBeatMs = 0;
+    gateRejections = 0;
     memset(rates, 0, sizeof(rates));
     irMin = 0xFFFFFFFF;
     irMax = 0;
@@ -150,9 +155,46 @@ void updateMAX30102Service() {
                 unsigned long delta = now - lastBeatMs;
                 float bpm = 60000.0f / (float)delta;
                 if (bpm >= 45.0f && bpm <= 180.0f) {
-                    // Rate-of-Change Gate: Reject single-sample spikes > 15 BPM/sec if already valid
-                    bool isSpike = g_watchState.hrValid && (fabsf(bpm - g_watchState.heartRateBPM) > 15.0f);
-                    if (!isSpike) {
+                    // Reject beats that jump too far from the current reading:
+                    // a mis-detected beat halves or doubles the interval, which
+                    // is a much bigger step than any real heart makes.
+                    //
+                    // The gate measures against its own output, so it needs a
+                    // way out -- see PPG_GATE_ESCAPE_BEATS. Without it the
+                    // display locks on a stale value the moment the true rate
+                    // moves away from it, and every subsequent beat is rejected
+                    // by comparison against that same stale value.
+                    bool isSpike = g_watchState.hrValid &&
+                                   fabsf(bpm - g_watchState.heartRateBPM) > PPG_MAX_BPM_STEP;
+
+                    if (isSpike && gateRejections >= PPG_GATE_ESCAPE_BEATS) {
+                        // Reality has disagreed with us this many times in a
+                        // row. Assume the reading is what drifted, not the
+                        // heart: drop the history and re-lock around the beat
+                        // we are being handed. Clearing rates[] matters --
+                        // keeping it would let the median drag the value
+                        // straight back to where it was stuck.
+                        Serial.printf(" [PPG] Rate gate stuck at %u BPM for %u beats"
+                                      " -- resyncing to %.0f BPM.\n",
+                                      g_watchState.heartRateBPM,
+                                      (unsigned)gateRejections, bpm);
+                        memset(rates, 0, sizeof(rates));
+                        rateIndex = 0;
+                        // Move the reference straight away. The median below
+                        // needs two samples before it will publish anything,
+                        // and until it does, heartRateBPM would still hold the
+                        // stuck value -- which is exactly what the next beat
+                        // gets compared against. Leaving it would make the
+                        // escape hatch fire over and over without ever
+                        // escaping.
+                        g_watchState.heartRateBPM = (uint16_t)bpm;
+                        isSpike = false;
+                    }
+
+                    if (isSpike) {
+                        gateRejections++;
+                    } else {
+                        gateRejections = 0;
                         rates[rateIndex] = (uint8_t)bpm;
                         rateIndex = (rateIndex + 1) % RATE_SIZE;
 

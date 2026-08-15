@@ -117,7 +117,7 @@ SparkFun chặn tới 250 ms) sẽ làm đứng hình cả giao diện lẫn b�
 
 ## 3. Chuỗi Xử lý Tín hiệu Nhịp tim & SpO2 tại Biên
 
-> **Trạng thái thật: tầng 1–3 đã có. Tầng 4 có một nửa. Tầng 5 CHƯA TRIỂN KHAI.**
+> **Trạng thái thật: tầng 1–4 đã có (tầng 4 vừa hoàn thiện van thoát). Tầng 5 CHƯA TRIỂN KHAI.**
 > Mục này mô tả đúng những gì [src/sensors/max30102_service.cpp](src/sensors/max30102_service.cpp) đang làm.
 
 ### Tốc độ lấy mẫu thực tế
@@ -155,15 +155,17 @@ Nhưng với phân tích **khoảng RR** thì 40 ms là quá thô — xem §9 v�
          ▼
  3. TẦNG 3: Dò đỉnh MIỀN THỜI GIAN   ✅ CÓ
     ──> `checkForBeat(ir)` → đo khoảng giữa 2 nhịp bằng millis() → BPM = 60000/delta.
-    ──> Lọc thô: chỉ nhận 40 < BPM < 200. Trung bình 4 nhịp gần nhất.
+    ──> Lọc thô: chỉ nhận 45 ≤ BPM ≤ 180. Bốn nhịp gần nhất chuyển sang Tầng 4.
     ──> ĐÂY KHÔNG PHẢI FFT. Không có biến đổi Fourier nào trong dự án. (Cố ý:
         FFT cần cửa sổ 8–16s, làm nhịp tim phản ứng chậm hẳn.)
          │
          ▼
- 4. TẦNG 4: Loại Số Ảo Đột biến (Median + Rate-of-Change Gate)   ⚠️ CÓ MỘT NỬA
-    ──> ĐÃ CÓ: trung vị thật trên mảng đã sắp xếp (max30102_service.cpp:166-174),
-        và chặn thay đổi > 15 BPM so với giá trị đang hiển thị (dòng 154).
-    ──> 🔴 CÒN THIẾU: "van thoát". Xem cảnh báo ngay dưới đây.
+ 4. TẦNG 4: Loại Số Ảo Đột biến (Median + Rate-of-Change Gate)   ✅ CÓ
+    ──> Trung vị thật trên mảng đã sắp xếp, cộng bộ chặn thay đổi
+        > PPG_MAX_BPM_STEP (15 BPM) so với giá trị đang hiển thị.
+    ──> Kèm van thoát PPG_GATE_ESCAPE_BEATS: loại 8 nhịp liên tiếp thì buộc
+        chấp nhận và bám lại theo nhịp thật. Xem phần ngay dưới — thiếu nó
+        thì bộ chặn tự khoá cứng chính mình.
          │
          ▼
  5. TẦNG 5: Làm mịn Kalman 1D + Kiểm định SQI   ❌ CHƯA TRIỂN KHAI
@@ -173,18 +175,14 @@ Nhưng với phân tích **khoảng RR** thì 40 ms là quá thô — xem §9 v�
 [Nhịp tim & SpO2 hiển thị Màn hình & Gửi Telegram]
 ```
 
-### 🔴 Tầng 4 thiếu van thoát — nhịp tim có thể khoá cứng vĩnh viễn
+### Van thoát của Tầng 4 — ĐÃ SỬA, chưa kiểm chứng trên phần cứng
 
-```cpp
-// max30102_service.cpp:154
-bool isSpike = g_watchState.hrValid && (fabsf(bpm - g_watchState.heartRateBPM) > 15.0f);
-if (!isSpike) { /* chỉ khi KHÔNG phải spike mới được ghi vào rates[] */ }
-```
+Đây từng là lỗi 🔴 nặng hơn cả thứ mà bộ chặn sinh ra để chống. Ghi lại đầy đủ vì
+nó là ví dụ điển hình của một bộ lọc tự tham chiếu.
 
-Bộ chặn so nhịp mới với `heartRateBPM` — tức là **đầu ra của chính bộ lọc**. Khi giá trị mới
-bị loại, `heartRateBPM` không đổi, nên nhịp kế tiếp lại bị so với đúng con số cũ đó và lại bị loại.
-
-**Vòng lặp không có lối ra:**
+**Lỗi cũ:** bộ chặn so nhịp mới với `heartRateBPM` — **đầu ra của chính nó**. Khi
+giá trị mới bị loại, `heartRateBPM` không đổi, nên nhịp kế tiếp lại bị so với đúng
+con số cũ đó và lại bị loại:
 
 ```text
 Đang hiển thị 75 BPM  →  nhịp thật tăng lên 95 (gắng sức / lên cơn nhịp nhanh)
@@ -194,14 +192,33 @@ bị loại, `heartRateBPM` không đổi, nên nhịp kế tiếp lại bị so
         └─ ... mãi mãi, cho tới khi mất tiếp xúc da (hrValid = false)
 ```
 
-Màn hình đứng yên ở 75 trong khi tim thật đập 95. Thiết bị **nói dối theo hướng trấn an**,
-đúng vào lúc con số có ý nghĩa nhất. Nghịch lý: bộ lọc sinh ra để chống số ảo, nhưng vì thiếu
-van thoát nó lại che mất đúng sự kiện lâm sàng cần thấy.
+Màn hình đứng yên ở 75 trong khi tim thật đập 95 — thiết bị **nói dối theo hướng
+trấn an**, đúng vào lúc con số có ý nghĩa nhất. Con số ảo 180 BPM thì người dùng
+nhìn là biết sai; một con số hợp lý nhưng đông cứng thì không ai phát hiện được.
 
-**Cách sửa** (Giai đoạn 5, ~5 dòng): đếm số lần bị loại **liên tiếp**; quá 8 lần thì buộc chấp
-nhận giá trị mới và reset bộ đếm. 8 nhịp ở 60–100 BPM là khoảng 5–8 giây — đủ lâu để chặn nhiễu
-xung đơn lẻ, đủ nhanh để không bỏ lỡ một cơn nhịp nhanh thật. Mọi nhịp được chấp nhận (kể cả
-đường bình thường) đều phải reset bộ đếm về 0.
+**Đã sửa** ([max30102_service.cpp](src/sensors/max30102_service.cpp), hằng số ở
+[app_config.h](include/app_config.h)):
+
+```cpp
+#define PPG_MAX_BPM_STEP      15.0f   // bước nhảy tối đa cho một nhịp
+#define PPG_GATE_ESCAPE_BEATS 8       // loại liên tiếp bấy nhiêu lần thì buộc nhận
+```
+
+Ba chi tiết quan trọng của bản sửa, thiếu bất kỳ cái nào là van thoát không hoạt động:
+
+| # | Việc phải làm | Vì sao |
+|---|---|---|
+| 1 | Đếm số lần loại **liên tiếp**; mọi nhịp được chấp nhận reset về 0 | Chỉ chuỗi loại liên tiếp mới là dấu hiệu bị kẹt; nhiễu rời rạc thì không |
+| 2 | Khi resync, **xoá sạch `rates[]`** | Giữ lại thì trung vị kéo giá trị về đúng chỗ vừa thoát ra |
+| 3 | Khi resync, **gán thẳng `heartRateBPM = bpm`** | Trung vị cần ≥ 2 mẫu mới xuất; trong lúc chờ, `heartRateBPM` vẫn là giá trị kẹt — và đó chính là thứ nhịp kế tiếp bị đem ra so. Thiếu bước này thì van thoát bắn đi bắn lại mà không bao giờ thoát |
+
+8 nhịp ở 60–100 BPM là khoảng 5–8 giây: đủ lâu để chặn nhiễu xung đơn lẻ, đủ nhanh
+để không bỏ lỡ một cơn nhịp nhanh thật. Mỗi lần resync in một dòng
+`[PPG] Rate gate stuck at ... resyncing to ...` — nếu dòng này xuất hiện dày đặc lúc
+ngồi yên thì `PPG_MAX_BPM_STEP` đang quá chặt.
+
+**Còn lại:** kiểm chứng trên người đeo thật — đo lúc ngồi yên rồi vận động nhẹ, xem
+số có bám theo không và dòng resync có hiếm không.
 
 ### Chỉ số Chất lượng Tín hiệu (SQI) — CHƯA HIỆU CHUẨN
 
@@ -588,17 +605,17 @@ Cảnh báo này bắn thẳng vào nhóm Telegram gia đình, nên phải lọc
 ```text
 A4 (log FALLCSV)  ─────────────────────────────────> 9.1  AI Té ngã
 
-B1a (median + chặn 15 BPM/s)  ✅ ĐÃ CÓ ─┐
-B1b (van thoát 8 lần)         ❌ THIẾU ─┴─> Tầng 4 ─┐
-                                                    ├─> 9.2  Sàng lọc khoảng RR
-B2  (Kalman + chặn theo SQI)  ❌ THIẾU ────> Tầng 5 ─┤
-                                                    │
-B0  (PPG 200 Hz + mốc từ FIFO) ❌ THIẾU ────────────┘
+B1a (median + chặn 15 BPM/nhịp) ✅ ĐÃ CÓ ─┐
+B1b (van thoát 8 nhịp)          ✅ ĐÃ CÓ ─┴─> Tầng 4 ─┐
+                                                      ├─> 9.2  Sàng lọc khoảng RR
+B2  (Kalman + chặn theo SQI)    ❌ THIẾU ──> Tầng 5 ──┤
+                                                      │
+B0  (PPG 200 Hz + mốc từ FIFO)  ❌ THIẾU ─────────────┘
 ```
 
-> Đọc sơ đồ: 9.2 **chưa thể bắt đầu**. Nó cần cả ba nhánh, mà hiện chỉ có B1a.
+> Đọc sơ đồ: 9.2 **chưa thể bắt đầu** — còn thiếu B0 và B2.
 > B0 là điều kiện tiên quyết cứng (độ phân giải 40 ms không đo nổi RMSSD 20–50 ms);
-> B1b và B2 là điều kiện về độ sạch (một nhịp sai làm khoảng RR gấp đôi → dương tính giả rung nhĩ).
+> B2 là điều kiện về độ sạch (một nhịp sai làm khoảng RR gấp đôi → dương tính giả rung nhĩ).
 
 ---
 
@@ -687,18 +704,13 @@ trên tính năng cốt lõi nhất của sản phẩm.
 đại lượng đo. Cộng thêm ~20 ms jitter do lấy mốc bằng `millis()` lúc vòng lặp chạy thay vì lúc mẫu được lấy.
 **Chặn hoàn toàn §9.2.** Khắc phục: Giai đoạn 5 / Phần B — nâng 200 Hz + suy mốc thời gian từ chỉ số FIFO.
 
-**3. 🔴 Tầng 4 thiếu van thoát — nhịp tim khoá cứng vĩnh viễn.** *(thay cho hạn chế "số nhịp ảo
-chưa bị chặn" — vấn đề đó đã được xử lý, nhưng cách xử lý lại sinh ra một lỗi nặng hơn.)*
+**3. Số nhịp ảo — ĐÃ XỬ LÝ, chưa kiểm chứng trên người đeo.** Dải hợp lệ siết còn
+`45 ≤ BPM ≤ 180`, thêm trung vị thật, bộ chặn 15 BPM/nhịp và van thoát 8 nhịp. Lần sửa đầu
+tiên của bộ chặn từng tạo ra một lỗi 🔴 nặng hơn (nhịp tim khoá cứng vĩnh viễn); van thoát
+đã đóng lỗ đó — diễn giải đầy đủ: [§3](#3-chuỗi-xử-lý-tín-hiệu-nhịp-tim--spo2-tại-biên).
+Còn lại: đo trên người đeo thật để chỉnh `PPG_MAX_BPM_STEP` nếu dòng resync xuất hiện quá dày.
 
-Số nhịp ảo nay đã bị chặn: dải hợp lệ siết còn `45 ≤ BPM ≤ 180`, thêm trung vị thật và bộ chặn
-15 BPM/s. Nhưng bộ chặn so nhịp mới với **đầu ra của chính nó**, không có van thoát, nên khi
-nhịp thật tăng vọt thì mọi nhịp mới đều bị loại và màn hình đứng yên ở giá trị cũ cho tới khi
-mất tiếp xúc da. Diễn giải đầy đủ kèm cách sửa: [§3](#3-chuỗi-xử-lý-tín-hiệu-nhịp-tim--spo2-tại-biên).
-
-Đây là lỗi **nguy hiểm hơn** cái nó thay thế: số ảo 180 BPM thì người dùng nhìn là biết sai,
-còn một con số hợp lý nhưng đông cứng thì không ai phát hiện được.
-
-**4. DSP Tầng 5 chưa tồn tại** (Kalman + chặn hiển thị theo SQI). Tầng 4 mới có một nửa. Xem §3.
+**4. DSP Tầng 5 chưa tồn tại** (Kalman + chặn hiển thị theo SQI). Xem §3.
 
 ### ⚪ Trung bình / Thấp
 
@@ -739,7 +751,7 @@ dùng thật. Chi tiết và hướng khắc phục: [BLE_PROTOCOL.md](BLE_PROTO
 |---|---|---|
 | Lỗi 🔴 | Đã sửa trong code | Đã sửa **và kiểm chứng trên phần cứng** |
 | Té ngã | Ma trận nhầm lẫn, độ nhạy / độ đặc hiệu, đường ROC trên tập test | Thử nghiệm thực địa **nhiều ngày** trên người đeo thật, đếm báo động giả/ngày |
-| Nhịp tim | So sánh với thiết bị tham chiếu ở tư thế ngồi yên | Ổn định khi vận động; Tầng 4 có van thoát + Tầng 5 hoạt động |
+| Nhịp tim | So sánh với thiết bị tham chiếu ở tư thế ngồi yên | Ổn định khi vận động; Tầng 5 hoạt động; van thoát Tầng 4 đã đo trên người đeo |
 | BLE | Kết nối và đọc được từ điện thoại | Có ghép cặp/bonding — lệnh huỷ báo động không thể bị giả mạo |
 | Ngưỡng | Ghi rõ là chưa hiệu chuẩn | Đã hiệu chuẩn bằng số đo |
 | Cảnh báo | Gửi được tin thật một lần | Kiểm chứng đường mất mạng: hàng đợi NVS, retry, khôi phục sau reboot |
@@ -759,7 +771,8 @@ kiểm chứng, và các ngưỡng vẫn là số phỏng đoán.
 | 3 (Phần A) | Sửa lỗi té ngã 🔴, tag `v0.2-fall-fix` | ✅ Xong code, ⏳ chờ kiểm chứng phần cứng |
 | 2 | Viết lại tài liệu cho đúng sự thật | ✅ Xong (tài liệu này) |
 | 2b | README, `BLE_PROTOCOL.md`, cho `.CLAUDE/Plan/` nghỉ hưu | ✅ Xong |
-| 5 (Phần B) | Van thoát Tầng 4 + DSP Tầng 5 (Kalman/SQI) + nâng PPG 200 Hz | ⏳ Kế tiếp |
+| 5a | Van thoát Tầng 4 (`PPG_GATE_ESCAPE_BEATS`) | ✅ Xong code, ⏳ chờ kiểm chứng |
+| 5 (Phần B) | DSP Tầng 5 (Kalman + chặn theo SQI) + nâng PPG 200 Hz | ⏳ Kế tiếp |
 | 6 (Phần C) | Nút SOS BOOT, cảnh báo pin yếu, cảnh báo ngưỡng sinh lý | ⏳ |
 | 7 (Phần D) | TinyML: cây té ngã + sàng lọc khoảng RR | ⏳ |
 | 8 | Đánh giá: ma trận nhầm lẫn, độ nhạy/đặc hiệu, ROC, so với baseline 4 pha | ⏳ |
