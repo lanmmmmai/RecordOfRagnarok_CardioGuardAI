@@ -109,53 +109,6 @@
 // finger meets.
 #define PPG_CONTACT_GAP_SAMPLES  100
 
-// ---------------------------------------------------------------------------
-// Adaptive beat detector
-//
-// Calibrated against the session logged 2026-08-15 23:15-23:17 on this unit,
-// finger resting on the sensor: AC amplitude 583-2524, DC 128,000-161,000,
-// perfusion 0.26-2.6%. The SparkFun checkForBeat() this replaced carries a
-// hard window of 20 < amplitude < 1000, which rejects anything above roughly
-// 1% perfusion -- the better the trace, the more certainly it was thrown away.
-// ---------------------------------------------------------------------------
-
-// Smoothing factor for the DC baseline estimate, per sample at 200 Hz.
-// Time constant is 1/alpha samples: 0.005 gives 200 samples = 1.0 s.
-//
-// It has to be slower than a heart beat. A beat spans 600-1000 ms, so a
-// baseline that settles inside 100 ms (alpha 0.05, the previous value) tracks
-// the pulse waveform itself and subtracts it out. The 23:16 log shows what
-// that costs: gaps of 4.0 s, 4.2 s and 7.5 s with no beat detected at all,
-// which is roughly 17 missed beats.
-#define PPG_DC_ALPHA             0.005f
-
-// Per-sample decay of the running peak-amplitude estimate. 0.998 halves it in
-// about 350 samples (1.7 s), so the threshold follows a genuine fall in
-// perfusion within a beat or two without drifting during a single pulse.
-#define PPG_PEAK_DECAY           0.998f
-
-// Fraction of the tracked peak a candidate must exceed to count as a beat.
-// The dicrotic notch runs 30-50% of systolic amplitude on a wrist, so 0.35
-// sits above the notch and below the true peak.
-#define PPG_PEAK_THRESHOLD_RATIO 0.35f
-
-// Lower bound on the tracked peak, so the threshold cannot collapse onto the
-// noise floor when the finger lifts. This is a floor for the ADAPTIVE
-// threshold, not a minimum acceptable beat amplitude -- measured AC bottoms
-// out near 583, and 400 x 0.35 = 140 stays comfortably beneath that.
-#define PPG_PEAK_AC_FLOOR        400.0f
-
-// Minimum samples between accepted beats, at 200 Hz.
-//
-// 50 samples = 250 ms = a ceiling of 240 BPM, which is above any rate a human
-// heart reaches. The previous 130 samples capped it at 92.3 BPM: in the 23:16
-// log, 6 of 30 intervals came back as exactly 130 samples and 16 of 30 fell in
-// 130-141, which is the guard being hit rather than a pulse being measured. On
-// a watch meant to flag tachycardia, a 92 BPM ceiling hides the event it exists
-// to catch. The dicrotic notch is rejected on amplitude instead; the guard only
-// has to span the notch itself, which arrives 355-415 ms after its peak.
-#define PPG_REFRACTORY_SAMPLES   50
-
 // Above this accelerometer standard deviation (in g) the arm is moving too
 // much for the PPG waveform to mean anything.
 #define PPG_MOTION_STD_G         0.08f
