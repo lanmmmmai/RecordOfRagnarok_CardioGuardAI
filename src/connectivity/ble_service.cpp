@@ -63,6 +63,8 @@ void initBLEService() {
 
     NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
     adv->addServiceUUID(BLE_SERVICE_UUID);
+    adv->setMinInterval(0x20); // 20ms fast advertising for instant phone pairing
+    adv->setMaxInterval(0x40); // 40ms
     adv->setScanResponse(true);
     adv->start();
 
@@ -92,6 +94,9 @@ void bleNotifyFallEvent(uint8_t eventType) {
 }
 
 void updateBLEService() {
+    if (!g_watchState.bleConnected && server && !server->getAdvertising()->isAdvertising()) {
+        server->getAdvertising()->start();
+    }
     // Commands arrive on the BLE host task; act on them here.
     uint8_t cmd = pendingCommand;
     if (cmd != 0) {
