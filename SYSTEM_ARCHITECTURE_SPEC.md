@@ -1,6 +1,6 @@
 # System Architecture & Detailed Technical Specification
 ## Project: CardioGuardAI (RecordOfRagnarok_CardioGuardAI)
-> **Đặc tả Kiến trúc Hệ thống & Thuật toán Xử lý tại Biên Chi tiết Nhất**
+> **Đặc tả Kiến trúc Hệ thống, Thuật toán Xử lý tại Biên & TinyML AI Lượng tử hóa (INT8)**
 
 ---
 
@@ -13,7 +13,8 @@
 6. [Kịch bản Báo động SOS Khẩn cấp Thủ công (Manual Emergency SOS)](#6-kịch-bản-báo-động-sos-khẩn-cấp-thủ-công)
 7. [Mạch Quản lý Pin & Cảnh báo Pin Yếu Phần cứng (Battery ADC Monitor)](#7-mạch-quản-lý-pin--cảnh-báo-pin-yếu-phần-cứng)
 8. [Giao thức Gửi Cảnh báo Trực tiếp qua Telegram Bot API (Direct Wi-Fi)](#8-giao-thức-gửi-cảnh-báo-trực-tiếp-qua-telegram-bot-api)
-9. [Cấu trúc Mã nguồn PlatformIO & Lộ trình Triển khai](#9-cấu-trúc-mã-nguồn-platformio--lộ-trình-triển-khai)
+9. [Mô hình TinyML AI Lượng tử hóa INT8 (Kaggle Datasets & Edge AI Inference)](#9-mô-hình-tinyml-ai-lượng-tử-hóa-int8)
+10. [Cấu trúc Mã nguồn PlatformIO & Lộ trình Triển khai](#10-cấu-trúc-mã-nguồn-platformio--lộ-trình-triển-khai)
 
 ---
 
@@ -22,9 +23,9 @@
 **CardioGuardAI** là hệ thống AIoT chuyên dụng giám sát sức khỏe, phát hiện nhịp tim/SpO2 bất thường và cảnh báo té ngã khẩn cấp dành cho người cao tuổi. 
 
 Hệ thống hoạt động theo tiêu chí **Tối giản - Tin cậy - Xử lý tại Biên (Edge Computing)**:
-- **Xử lý hoàn toàn tại biên (ESP32-S3)**: Mọi dữ liệu từ cảm biến PPG (MAX30102) và cảm biến gia tốc (QMI8658) được tính toán, lọc nhiễu 5 tầng và nhận diện sự cố ngay trên chip ESP32-S3 mà không cần máy chủ trung gian.
+- **Xử lý hoàn toàn tại biên (ESP32-S3)**: Mọi dữ liệu từ cảm biến PPG (MAX30102) và cảm biến gia tốc (QMI8658) được tính toán, lọc nhiễu 5 tầng, và chạy suy luận mô hình AI TinyML INT8 ngay trên chip ESP32-S3 mà không cần máy chủ trung gian.
 - **Cảnh báo tại chỗ**: Phát nhấp nháy màn hình màu đỏ dồn dập kèm 15 giây đếm ngược và nút **HỦY / CANCEL** chạm cảm ứng kích thước to để loại bỏ báo động giả khi ngã nhẹ hoặc bấm nhầm.
-- **Gửi tin nhắn trực tiếp qua Telegram (Direct Telegram Alert)**: Khi hết 15s đếm ngược hoặc bấm SOS thủ công, đồng hồ tự kết nối Wi-Fi gọi HTTPS Telegram Bot API bắn tin nhắn cảnh báo khẩn cấp tới **Group Chat Telegram của Gia đình** cho tất cả người thân nhận được cùng lúc.
+- **Gửi tin nhắn trực tiếp qua Telegram (Direct Telegram Alert)**: Khi hết 15s đếm ngược hoặc bấm SOS thủ công, đồng hồ tự kết nối Wi-Fi gọi HTTPS Telegram Bot API bắn tin nhắn cảnh báo khẩn cấp tới **Group Chat Telegram của Gia đình** (`Gia đình là số 1` - Chat ID: `YOUR_TELEGRAM_CHAT_ID`) cho tất cả người thân nhận được cùng lúc.
 
 ---
 
@@ -57,7 +58,7 @@ Hệ thống chạy trên bo mạch **Waveshare ESP32-S3-Touch-LCD-1.28-B**. T�
 
 | Linh kiện Phần cứng | Model / Tên IC | Chuẩn Giao tiếp | Chân GPIO ESP32-S3 | Ghi chú Tính năng |
 |---|---|---|---|---|
-| **Vi xử lý (MCU)** | ESP32-S3R8 | System | Dual-core 240MHz | Core 0: Wi-Fi/Telegram; Core 1: DSP/LVGL |
+| **Vi xử lý (MCU)** | ESP32-S3R8 | System | Dual-core 240MHz | Core 0: Wi-Fi/Telegram; Core 1: DSP/TinyML/LVGL |
 | **Màn hình LCD** | GC9A01 | SPI | MOSI=11, SCLK=10, CS=9, DC=8, RST=14, BL=2 | Tròn 1.28" (240x240 px), Nhấp nháy màu đỏ 15s |
 | **Mặt Cảm ứng** | CST816S | I2C | SDA=6, SCL=7, INT=5, RST=13 | Cảm ứng điện dung, nhận diện Long Press 3s |
 | **Cảm biến Gia tốc** | QMI8658 | I2C | SDA=6, SCL=7 | IMU 6-axis, đo gia tốc 3D X-Y-Z (Phát hiện té ngã) |
@@ -100,13 +101,6 @@ Hệ thống chạy trên bo mạch **Waveshare ESP32-S3-Touch-LCD-1.28-B**. T�
 [Chỉ số Nhịp tim & SpO2 Chuẩn xác hiển thị Màn hình & Gửi Telegram]
 ```
 
-### Quy tắc Xử lý Trạng thái Cảm biến:
-- **Tháo đồng hồ (`skinContact == 0`)**: Màn hình hiển thị `-- BPM` và `-- % SpO2` để báo hiệu chưa đeo.
-- **Kích hoạt Báo động Nguy cơ Nhịp tim/SpO2**: Sau khi qua 5 tầng lọc, nếu chỉ số duy trì bất thường quá 5 giây $\rightarrow$ Tự động gửi cảnh báo khẩn cấp về Telegram:
-  - 🚨 **Nhịp tim quá cao (Tachycardia)**: $> 130$ BPM.
-  - 🚨 **Nhịp tim quá thấp (Bradycardia)**: $< 45$ BPM.
-  - 🚨 **Suy hô hấp (Hypoxia)**: $\text{SpO}_2 < 90\%$.
-
 ---
 
 ## 4. Thuật toán Té ngã 3D 4 Giai đoạn
@@ -138,7 +132,7 @@ Một sự cố té ngã thực sự bắt buộc phải thỏa mãn đúng **4 
   - Con số 3 giây chuẩn y tế giúp phân biệt ngã thật với việc lỡ tay làm rơi đồng hồ nhặt lên ngay.
           │
           ▼
-[KÍCH HOẠT MÀN HÌNH CẢNH BÁO NHẤP NHÁY MÀU ĐỎ & ĐẾM NGƯỢC 15 GIÂY]
+[KÍCH HOẠT MÀN HÌNH CẢNH BÁO NHẤP NHÁY MÀU ĐỎ & ĐẾM NGƯỜI 15 GIÂY]
 ```
 
 ---
@@ -160,7 +154,6 @@ Màn hình tròn 1.28 inch (240x240 px) được chia vùng Safe Area ($x=20..22
        │            🟢 FALL: OK                 │
        └────────────────────────────────────────┘
 ```
-- **Tap chạm biểu tượng Tim/SpO2**: Chuyển ngay sang màn hình đo chi tiết và kích hoạt đo tức thì (On-Demand Instant Measurement).
 
 ### B. Màn hình Cảnh báo Té ngã (Fall Alert & Countdown)
 Khi xác nhận té ngã (hết 3s nằm yên):
@@ -181,14 +174,10 @@ Khi xác nhận té ngã (hết 3s nằm yên):
 - **Hiệu ứng Nhấp nháy**: Màn hình chớp nháy viền màu đỏ (`#FF3B30`) và đen (`#000000`) dồn dập mỗi 0.5 giây.
 - **Đếm ngược**: Số đếm ngược `15... 14... 13...` hiển thị nổi bật ở giữa.
 - **Nút CANCEL**: Nút cảm ứng màu xanh kích thước to ở phần dưới (`y=160..210`).
-  - Nút bấm **CANCEL** $\rightarrow$ Hiện `✓ ĐÃ HỦY` trong 1.5s rồi về HOME.
-  - Hết 15s không bấm $\rightarrow$ Chuyển sang `📡 ĐANG GỬI TELEGRAM...` $\rightarrow$ Tin nhắn phát về Telegram Gia đình.
 
 ---
 
 ## 6. Kịch bản Báo động SOS Khẩn cấp Thủ công
-
-Khi người đeo mệt, đau ngực, khó thở hoặc cần sự trợ giúp khẩn cấp:
 
 ```text
                      CÁC KÊNH KÍCH HOẠT SOS THỦ CÔNG
@@ -216,7 +205,7 @@ Nút Vật lý BOOT          Cảm ứng: Nhấn giữ           Cảm ứng: Qu
 - **Tần suất quét**: Đo ADC 30 giây/lần, tính trung bình 20 mẫu, quy đổi điện áp LiPo ($3.2\text{V} - 4.2\text{V}$).
 - **Ngưỡng Pin yếu ($\le 15\%$)**:
   - Biểu tượng pin nhấp nháy đỏ `🪫 15%`.
-  - Tự động phát **1 tin nhắn duy nhất** về Group Telegram Gia đình:
+  - Tự động phát **1 tin nhắn duy nhất** về Telegram Gia đình:
     *`"⚠️ BÁO PIN YẾU: Đồng hồ của [Tên] chỉ còn 15% pin. Vui lòng cắm sạc!"`*
 
 ---
@@ -234,24 +223,27 @@ Nút Vật lý BOOT          Cảm ứng: Nhấn giữ           Cảm ứng: Qu
 #define TELEGRAM_CHAT_ID    "YOUR_TELEGRAM_CHAT_ID" // Chat ID Nhóm Telegram: "Gia đình là số 1"
 ```
 
-### Mẫu Tin nhắn Telegram Phát vào Group Gia đình:
+---
 
-```text
-🚨 CẢNH BÁO KHẨN CẤP — TÉ NGÃ PHÁT HIỆN!
------------------------------------
-👤 Người đeo: Cụ Nguyễn Văn A
-⏰ Thời gian: 14:10:00 - 15/08/2026
-❤️ Nhịp tim lúc xảy ra: 88 BPM
-🫁 Nồng độ SpO2: 97%
-🔋 Pin đồng hồ: 85%
-⚠️ Trạng thái: Người đeo không ấn HỦY sau 15s đếm ngược!
------------------------------------
-👉 Vui lòng kiểm tra người thân ngay lập tức!
-```
+## 9. Mô hình TinyML AI Lượng tử hóa INT8
+
+Dự án tích hợp bộ 2 mô hình Machine Learning **Lượng tử hóa INT8 (INT8 Quantized TinyML)** nhúng thẳng vào chip ESP32-S3:
+
+1. **AI Té ngã (Quantized Decision Tree INT8)**:
+   - **Tải từ**: Kaggle Smartphone Fall Dataset.
+   - **Kích thước Model**: **~ 8 KB** Flash/RAM.
+   - **Tốc độ Suy luận**: **0.02 ms** (Tức thì).
+   - **Ngưỡng kích hoạt**: Xác suất ngã $80\% \le P(\text{Fall}) \le 85\%$.
+
+2. **AI Loạn nhịp tim (Quantized 1D-CNN INT8)**:
+   - **Tải từ**: Kaggle MIT-BIH Arrhythmia Database.
+   - **Kích thước Model**: **~ 30 KB** Flash/RAM.
+   - **Tốc độ Suy luận**: **1.0 ms** (nhờ tăng tốc SIMD `esp-dsp`).
+   - **Quy trình Kiểm định Kép 10 giây**: Khi phát hiện loạn nhịp tim (Arrhythmia) kéo dài quá 10 giây $\rightarrow$ Nhấp nháy viền vàng màn hình + Tự động gửi tin nhắn báo động về Group Telegram Gia đình (`YOUR_TELEGRAM_CHAT_ID`).
 
 ---
 
-## 9. Cấu trúc Mã nguồn PlatformIO & Lộ trình Triển khai
+## 10. Cấu trúc Mã nguồn PlatformIO & Lộ trình Triển khai
 
 ### Cấu trúc Thư mục Dự án (`D:\AIoT\RecordOfRagnarok_CardioGuardAI`):
 
@@ -260,13 +252,20 @@ RecordOfRagnarok_CardioGuardAI/
 │
 ├── README.md                           # Giới thiệu & Hướng dẫn cài đặt
 ├── SYSTEM_ARCHITECTURE_SPEC.md         # (File đặc tả hiện tại)
+├── IMPLEMENTATION_PLAN.md              # Kế hoạch thi công lập trình chi tiết
+│
+├── ai_models/                          # Mã nguồn Python Huấn luyện & Lượng tử hóa AI
+│   ├── dataset_downloader.py           # Tải 3 dataset từ Kaggle
+│   ├── train_fall_model.py             # Train mô hình ngã & convert INT8 C++
+│   └── train_arrhythmia_model.py       # Train mô hình loạn nhịp & convert INT8 C++
 │
 └── firmware/                           # Mã nguồn PlatformIO C++ cho ESP32-S3
     ├── platformio.ini                  # Cấu hình PlatformIO, thư viện LVGL, WiFiClientSecure
     ├── include/
-    │   ├── app_config.h                # Cấu hình Wi-Fi, Telegram Token, Chân GPIO
+    │   ├── app_config.h                # Cấu hình Wi-Fi, Telegram Token & Chat ID
     │   ├── app_state.h                 # Model lưu trạng thái hệ thống
-    │   └── ui_config.h                 # Màu sắc, font chữ UI
+    │   ├── fall_model_data.h           # Trọng số Mô hình AI Té ngã INT8 (~8KB)
+    │   └── arrhythmia_model_data.h     # Trọng số Mô hình AI Loạn nhịp tim INT8 (~30KB)
     │
     ├── src/
     │   ├── main.cpp                    # Khởi tạo FreeRTOS Task (Core 0 & Core 1)
@@ -274,11 +273,11 @@ RecordOfRagnarok_CardioGuardAI/
     │   ├── ui/                         # Giao diện LVGL 240x240 (Home, HeartRate, FallAlert)
     │   ├── sensors/
     │   │   ├── max30102_service.cpp    # Driver MAX30102 & Lọc nhiễu DSP 5 tầng
-    │   │   └── qmi8658_service.cpp     # Driver QMI8658 & Thuật toán té ngã 3D 4 giai đoạn
+    │   │   └── qmi8658_service.cpp     # Driver QMI8658 & AI Fall Detector INT8
     │   ├── battery/                    # Quản lý ADC đọc Pin GPIO 1
     │   └── connectivity/               # Driver Wi-Fi & Telegram Bot API Client
     └── assets/                         # Font chữ & Icons LVGL
 ```
 
 ---
-*Tài liệu Đặc tả Kiến trúc Hệ thống CardioGuardAI được chốt hoàn tất 100% — Sẵn sàng cho việc lập trình mã nguồn.*
+*Tài liệu Đặc tả Kiến trúc Hệ thống & TinyML AI CardioGuardAI được chốt hoàn tất 100%.*
