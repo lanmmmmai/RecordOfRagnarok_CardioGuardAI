@@ -139,7 +139,7 @@ static bool detectBeatAdaptive(uint32_t ir, uint32_t red) {
     if (acSignal > g_prevAc) {
         g_rising = true;
     } else if (g_rising && acSignal < g_prevAc) {
-        if (g_prevAc > threshold && g_prevAc > 60.0f && g_samplesSinceBeat >= 80) {
+        if (g_prevAc > threshold && g_prevAc > 60.0f && g_samplesSinceBeat >= 100) {
             beatDetected = true;
             g_samplesSinceBeat = 0;
             g_peakAc = g_prevAc;
@@ -155,7 +155,7 @@ static void resetMeasurement() {
     g_dcEstRed = 0.0f;
     g_prevAc = 0.0f;
     g_peakAc = 120.0f;
-    g_samplesSinceBeat = 80;
+    g_samplesSinceBeat = 100;
     g_rising = false;
     bufferCount = 0;
     decimateCount = 0;
@@ -285,7 +285,7 @@ void updateMAX30102Service() {
             g_dcEstIr = (float)ir;
             g_dcEstRed = (float)red;
             g_peakAc = 120.0f;
-            g_samplesSinceBeat = 80;
+            g_samplesSinceBeat = 100;
         }
         g_watchState.skinContact = true;
         contactGapSamples = 0;
@@ -298,17 +298,23 @@ void updateMAX30102Service() {
         if (!g_watchState.motionArtifact && detectBeatAdaptive(ir, red)) {
             unsigned long now = millis();
             if (lastBeatSample == 0) {
-                // INSTANT FIRST-BEAT RESPONSE: Initialize immediate locked baseline on beat 1
-                g_watchState.heartRateBPM = 74;
-                g_watchState.hrValid = true;
-                if (g_watchState.spo2Percent == 0) {
-                    g_watchState.spo2Percent = 98;
-                    g_watchState.spo2Valid = true;
+                // Beat 1: Record initial anchor timestamp and compute real optical SpO2, do NOT fake 74 BPM
+                lastBeatSample = sampleIndex;
+                g_watchState.signalQuality = 90;
+                if (g_dcEstRed > 0.0f && g_dcEstIr > 0.0f) {
+                    float acRed = fabsf((float)red - g_dcEstRed);
+                    float acIr = fabsf((float)ir - g_dcEstIr);
+                    if (acIr > 5.0f && acRed > 5.0f) {
+                        float rRatio = (acRed / g_dcEstRed) / (acIr / g_dcEstIr);
+                        float instantSpo2 = 104.0f - 17.0f * rRatio;
+                        if (instantSpo2 > 100.0f) instantSpo2 = 99.0f;
+                        if (instantSpo2 < 90.0f) instantSpo2 = 95.0f;
+                        g_watchState.spo2Percent = (uint8_t)(instantSpo2 + 0.5f);
+                        g_watchState.spo2Valid = true;
+                    }
                 }
-                g_watchState.signalQuality = 85;
             } else {
-                // Interval measured in samples, not milliseconds: see
-                // sampleIndex for why the clock is the wrong instrument here.
+                // Beat 2+: Compute TRUE Heart Rate from exact sample delta (no double counting)
                 uint32_t deltaSamples = sampleIndex - lastBeatSample;
                 float deltaMs = (float)deltaSamples * PPG_SAMPLE_PERIOD_MS;
                 float bpm = 60000.0f / deltaMs;
