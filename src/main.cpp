@@ -17,6 +17,7 @@
 #include "connectivity/wifi_manager.h"
 #include "connectivity/alert_dispatcher.h"
 #include "connectivity/ble_service.h"
+#include "connectivity/websocket_service.h"
 #include "ui/ui_manager.h"
 
 // Sensors are sampled on a fixed 50 Hz tick rather than as fast as the loop
@@ -192,6 +193,7 @@ void setup() {
 
     // Connect Wi-Fi (non-blocking) and start the BLE link to the phone
     initWiFiManager();
+    initWebSocketService();
     initBLEService();
 
     // Deliberately the last line of setup(). GPIO 0 is a strapping pin and
@@ -236,6 +238,7 @@ void loop() {
 
     PROFILE_JOB(6, updateAlertDispatcher());
     PROFILE_JOB(7, updateBLEService());
+    updateWebSocketService();
 
     if (now - lastUptimeTick >= 1000) {
         lastUptimeTick = now;

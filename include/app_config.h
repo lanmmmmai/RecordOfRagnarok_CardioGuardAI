@@ -151,7 +151,7 @@
 // uncalibrated ratio, not a meaningful percentage. Setting 75 before the scale
 // has been read off a real wrist would mean the screen never shows a number.
 // Read the actual SQI values from the log in Giai đoạn 3b, then tighten.
-#define PPG_MIN_SQI              20
+#define PPG_MIN_SQI              1
 
 // ---------------------------------------------------------------------------
 // Physiological threshold alerts

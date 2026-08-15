@@ -123,7 +123,7 @@ static bool detectBeatAdaptive(uint32_t ir) {
 
     // 3. Dynamic Threshold Tracking (decay to baseline)
     g_peakAc *= 0.992f;
-    if (g_peakAc < 400.0f) g_peakAc = 400.0f;
+    if (g_peakAc < 100.0f) g_peakAc = 100.0f;
     if (acSignal > g_peakAc) {
         g_peakAc = acSignal;
     }
@@ -136,7 +136,7 @@ static bool detectBeatAdaptive(uint32_t ir) {
     if (acSignal > g_prevAc) {
         g_rising = true;
     } else if (g_rising && acSignal < g_prevAc) {
-        if (g_prevAc > threshold && g_prevAc > 150.0f && g_samplesSinceBeat >= 65) {
+        if (g_prevAc > threshold && g_prevAc > 40.0f && g_samplesSinceBeat >= 65) {
             beatDetected = true;
             g_samplesSinceBeat = 0;
             g_peakAc = g_prevAc;
