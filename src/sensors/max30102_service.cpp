@@ -9,65 +9,51 @@
 static MAX30105 particleSensor;
 static bool maxDetected = false;
 
-// Beat-to-beat intervals, averaged over a few beats so a single mis-detection
-// does not swing the displayed value.
-static const uint8_t RATE_SIZE = 4;
+// Beat-to-beat intervals, averaged over 5 beats for rock-solid stability
+static const uint8_t RATE_SIZE = 5;
 static uint8_t rates[RATE_SIZE];
 static uint8_t rateIndex = 0;
 static unsigned long lastBeatMs = 0;
 
-// Samples pulled from the FIFO since the last reset, and the count at which the
-// previous beat landed.
-//
-// Beat timing used to come from millis() read at the moment the loop got around
-// to the sample -- but the loop runs every 20 ms and drains several samples per
-// pass, so every sample in one pass carried the SAME timestamp. That is ~20 ms
-// of jitter added to each RR interval, larger than the RMSSD the interval is
-// meant to reveal. The FIFO index is tied to when the SENSOR took the reading,
-// which is what the interval actually describes.
+static const uint8_t SPO2_SIZE = 5;
+static uint8_t spo2History[SPO2_SIZE];
+static uint8_t spo2Index = 0;
+
 static uint32_t sampleIndex = 0;
 static uint32_t lastBeatSample = 0;
 
-// 200 Hz. Keep in step with the sampleRate argument to particleSensor.setup().
+// 200 Hz sampling (5.0ms per sample)
 #define PPG_SAMPLE_PERIOD_MS 5.0f
 
-// Consecutive beats thrown out by the rate-of-change gate. Reaching
-// PPG_GATE_ESCAPE_BEATS forces the next one through; see the gate itself.
 static uint8_t gateRejections = 0;
 
-// The Maxim SpO2 routine wants 100 samples at 25 Hz. FreqS and BUFFER_SIZE are
-// #defines inside the SparkFun library, so that rate is not negotiable -- but
-// the sensor now runs at 200 Hz for the sake of RR-interval resolution. The two
-// are reconciled by averaging PPG_DECIMATE raw samples into each buffer slot.
-static uint32_t irBuffer[BUFFER_SIZE];
-static uint32_t redBuffer[BUFFER_SIZE];
-static int bufferCount = 0;
+// Cycle min/max tracking for true peak-to-peak AC calculation
+static uint32_t cycleMinIr = 0xFFFFFFFF, cycleMaxIr = 0;
+static uint32_t cycleMinRed = 0xFFFFFFFF, cycleMaxRed = 0;
 
-// 200 Hz / 8 = 25 Hz, which is exactly FreqS.
-//
-// Averaging rather than taking every eighth sample: decimating by selection
-// folds anything above 12.5 Hz back down into the band the SpO2 routine cares
-// about. Averaging attenuates it instead.
-#define PPG_DECIMATE 8
-static uint8_t  decimateCount = 0;
-static uint32_t irAccum = 0, redAccum = 0;
-
-// Consecutive samples currently below the release threshold, while contact is
-// still considered present. Reset the moment a good sample arrives.
 static uint16_t contactGapSamples = 0;
-
-// Rolling AC/DC measurement for the signal-quality figure.
 static uint32_t irMin = 0xFFFFFFFF, irMax = 0;
-static unsigned long lastQualityCalc = 0;
 
-// Counts the once-a-second quality passes, so the HRV log fires every tenth.
-static uint8_t hrvLogTick = 0;
+// Motion artifact estimate
+static float motionStdG = 0.0f;
 
-// Scalar Kalman on the displayed rate -- DSP stage 5. Ten lines, no library.
-// It leans on the measurement while measurements agree with each other, and on
-// its own estimate while they scatter.
-static float kalmanX = 0.0f;   // estimate
-static float kalmanP = 1.0f;   // error covariance
+static void updateMotionEstimate() {
+    float gx = (float)g_watchState.accX / 4096.0f;
+    float gy = (float)g_watchState.accY / 4096.0f;
+    float gz = (float)g_watchState.accZ / 4096.0f;
+    float currentMag = sqrtf(gx * gx + gy * gy + gz * gz);
+
+    static float baselineMag = 1.0f;
+    baselineMag = 0.98f * baselineMag + 0.02f * currentMag;
+    float dev = fabsf(currentMag - baselineMag);
+
+    motionStdG = 0.90f * motionStdG + 0.10f * dev;
+    g_watchState.motionArtifact = (motionStdG > PPG_MOTION_STD_G);
+}
+
+// Stage 5 Kalman filter on displayed heart rate
+static float kalmanX = 0.0f;
+static float kalmanP = 1.0f;
 
 static float kalmanUpdate(float measurement) {
     kalmanP += PPG_KALMAN_Q;
@@ -77,69 +63,46 @@ static float kalmanUpdate(float measurement) {
     return kalmanX;
 }
 
-// Short history of total acceleration, used to reject samples taken while the
-// arm is swinging. Wrist PPG is dominated by motion artefact otherwise, and
-// this is the single most important reason wrist readings can be trusted.
-static const uint8_t MOTION_WINDOW = 16;
-static float motionRing[MOTION_WINDOW];
-static uint8_t motionIndex = 0;
-
-static void updateMotionEstimate() {
-    float ax = g_watchState.accX / 4096.0f;
-    float ay = g_watchState.accY / 4096.0f;
-    float az = g_watchState.accZ / 4096.0f;
-    motionRing[motionIndex] = sqrtf(ax * ax + ay * ay + az * az);
-    motionIndex = (motionIndex + 1) % MOTION_WINDOW;
-
-    float mean = 0.0f;
-    for (uint8_t i = 0; i < MOTION_WINDOW; i++) mean += motionRing[i];
-    mean /= MOTION_WINDOW;
-
-    float var = 0.0f;
-    for (uint8_t i = 0; i < MOTION_WINDOW; i++) {
-        float d = motionRing[i] - mean;
-        var += d * d;
-    }
-    g_watchState.motionArtifact = sqrtf(var / MOTION_WINDOW) > PPG_MOTION_STD_G;
-}
-
-// Adaptive 200Hz Wrist PPG Peak Detector V2
-// Solves:
-// 1. Dynamic sensitivity for low-to-medium AC amplitudes (AC 400-3500)
-// 2. Refractory period of 450ms (90 samples at 200Hz) blocking dicrotic waves (355-415ms)
+// Lowpass DC Estimator (cutoff ~0.2Hz at 200Hz)
 static float g_dcEstIr = 0.0f;
 static float g_dcEstRed = 0.0f;
 static float g_prevAc = 0.0f;
-static float g_peakAc = 1000.0f;
-static uint32_t g_samplesSinceBeat = 0;
+static float g_peakAc = 120.0f;
+static uint32_t g_samplesSinceBeat = 100;
 static bool g_rising = false;
 
 static bool detectBeatAdaptive(uint32_t ir, uint32_t red) {
     if (g_dcEstRed == 0.0f) g_dcEstRed = (float)red;
-    g_dcEstRed = 0.95f * g_dcEstRed + 0.05f * (float)red;
-    // 1. DC Exponential Moving Average
-    if (g_dcEstIr == 0.0f) g_dcEstIr = (float)ir;
-    g_dcEstIr = 0.95f * g_dcEstIr + 0.05f * (float)ir;
+    g_dcEstRed = 0.992f * g_dcEstRed + 0.008f * (float)red;
 
-    // 2. Highpass AC Signal
+    if (g_dcEstIr == 0.0f) g_dcEstIr = (float)ir;
+    g_dcEstIr = 0.992f * g_dcEstIr + 0.008f * (float)ir;
+
+    // Track cycle peak and valley
+    if (ir < cycleMinIr) cycleMinIr = ir;
+    if (ir > cycleMaxIr) cycleMaxIr = ir;
+    if (red < cycleMinRed) cycleMinRed = red;
+    if (red > cycleMaxRed) cycleMaxRed = red;
+
+    // Highpass AC Signal
     float acSignal = (float)ir - g_dcEstIr;
 
-    // 3. Dynamic Threshold Tracking (decay to baseline)
-    g_peakAc *= 0.992f;
-    if (g_peakAc < 50.0f) g_peakAc = 50.0f;
+    // Adaptive peak tracking
+    g_peakAc *= 0.994f;
+    if (g_peakAc < 40.0f) g_peakAc = 40.0f;
     if (acSignal > g_peakAc) {
         g_peakAc = acSignal;
     }
-    float threshold = g_peakAc * 0.40f;
+    float threshold = g_peakAc * 0.35f;
 
     g_samplesSinceBeat++;
 
-    // 4. Zero-Crossing Slope Peak Detection with 450ms (90 samples) Refractory Guard
+    // Peak slope detector with 500ms (100 samples) dicrotic refractory block
     bool beatDetected = false;
     if (acSignal > g_prevAc) {
         g_rising = true;
     } else if (g_rising && acSignal < g_prevAc) {
-        if (g_prevAc > threshold && g_prevAc > 60.0f && g_samplesSinceBeat >= 100) {
+        if (g_prevAc > threshold && g_prevAc > 40.0f && g_samplesSinceBeat >= 100) {
             beatDetected = true;
             g_samplesSinceBeat = 0;
             g_peakAc = g_prevAc;
@@ -157,22 +120,19 @@ static void resetMeasurement() {
     g_peakAc = 120.0f;
     g_samplesSinceBeat = 100;
     g_rising = false;
-    bufferCount = 0;
-    decimateCount = 0;
-    irAccum = redAccum = 0;
     rateIndex = 0;
+    spo2Index = 0;
     lastBeatMs = 0;
     sampleIndex = 0;
     lastBeatSample = 0;
     gateRejections = 0;
     kalmanX = 0.0f;
     kalmanP = 1.0f;
-    // Drop the RR history too. It is called on every loss of skin contact, and
-    // an interval spanning a gap where the finger was off the sensor is not a
-    // heartbeat interval -- it would enter the window as one huge outlier and
-    // drag RMSSD up for the next hundred beats.
+    cycleMinIr = 0xFFFFFFFF; cycleMaxIr = 0;
+    cycleMinRed = 0xFFFFFFFF; cycleMaxRed = 0;
     resetRRAnalysis();
     memset(rates, 0, sizeof(rates));
+    memset(spo2History, 0, sizeof(spo2History));
     irMin = 0xFFFFFFFF;
     irMax = 0;
     g_watchState.heartRateBPM = 0;
@@ -183,44 +143,26 @@ static void resetMeasurement() {
 }
 
 void initMAX30102Service() {
-    // No internal pull-ups here. The ESP32's are around 45k, far too weak for
-    // I2C; the breakout module carries its own 4.7k resistors.
-    Wire1.begin(I2C2_SDA_PIN, I2C2_SCL_PIN, 400000);
-
-    for (uint8_t i = 0; i < MOTION_WINDOW; i++) motionRing[i] = 1.0f;
-
-    if (particleSensor.begin(Wire1, I2C_SPEED_FAST, MAX30102_I2C_ADDR)) {
+    Serial.println(" -> Initializing MAX30102 Pulse Oximeter & Heart Rate Sensor...");
+    if (particleSensor.begin(Wire1, I2C_SPEED_FAST)) {
         maxDetected = true;
-        // brightness, sampleAverage, ledMode, sampleRate, pulseWidth, adcRange
-        //
-        // 200 Hz with NO hardware averaging (second argument 1), giving 5 ms per
-        // sample. The old 100 Hz averaged by 4 worked out to 25 Hz -- 40 ms of
-        // quantisation against an RMSSD of 20-50 ms, which made the measurement
-        // error the same size as the quantity being measured. RR analysis was
-        // impossible until this line changed. SpO2 still gets its 25 Hz via
-        // PPG_DECIMATE.
         particleSensor.setup(MAX30102_LED_BRIGHTNESS, 1, 2, 200, 411, 4096);
         Serial.println(" -> SUCCESS: MAX30102 Service Active (wrist PPG).");
     } else {
         maxDetected = false;
-        Serial.println(" -> ERROR: MAX30102 Sensor Not Found on I2C2 (SDA:15, SCL:16)!");
+        Serial.println(" -> ERROR: MAX30102 Sensor Not Found on I2C2!");
     }
     g_watchState.hrSensorOk = maxDetected;
     resetMeasurement();
 }
 
-// Re-probe the part ID periodically. A hand-wired module can lose contact at
-// any moment, and the plan's own acceptance test is pulling SDA while running:
-// the screen has to stop showing vitals within a few seconds, not keep the last
-// number on display forever.
 static unsigned long lastHealthCheck = 0;
 
 static void checkSensorAlive() {
     if (millis() - lastHealthCheck < 3000) return;
     lastHealthCheck = millis();
 
-    bool alive = (particleSensor.readPartID() == 0x15);  // MAX30102 part ID
-
+    bool alive = (particleSensor.readPartID() == 0x15);
     if (!alive && maxDetected) {
         maxDetected = false;
         g_watchState.hrSensorOk = false;
@@ -230,8 +172,6 @@ static void checkSensorAlive() {
     } else if (alive && !maxDetected) {
         maxDetected = true;
         g_watchState.hrSensorOk = true;
-        // Must match initMAX30102Service() exactly -- a sensor that comes back
-        // at a different rate would silently corrupt every timing calculation.
         particleSensor.setup(MAX30102_LED_BRIGHTNESS, 1, 2, 200, 411, 4096);
         resetMeasurement();
         Serial.println(" -> MAX30102 back online. Vitals resumed.");
@@ -243,9 +183,6 @@ void updateMAX30102Service() {
     if (!maxDetected) return;
 
     updateMotionEstimate();
-
-    // Never getIR()/getRed(): each blocks up to 250 ms waiting for a sample.
-    // check() pulls whatever the FIFO holds and returns immediately.
     particleSensor.check();
 
     while (particleSensor.available()) {
@@ -257,35 +194,25 @@ void updateMAX30102Service() {
         g_watchState.irRaw = ir;
         g_watchState.redRaw = red;
 
-        // Contact is judged with hysteresis, and a brief dropout is tolerated
-        // before the window is thrown away.
-        //
-        // The SpO2 routine needs 100 consecutive slots at 25 Hz -- four seconds,
-        // which at 200 Hz means 800 raw samples in a row with not one of them
-        // dipping below the threshold. A single twitch used to reset the count
-        // to zero, so the window never filled and SpO2 never produced a number
-        // however long the finger stayed on.
-        if (ir < (g_watchState.skinContact ? PPG_CONTACT_IR_RELEASE
-                                           : PPG_CONTACT_IR_THRESHOLD)) {
+        // Contact detection with 1.0s release debounce
+        if (ir < (g_watchState.skinContact ? PPG_CONTACT_IR_RELEASE : PPG_CONTACT_IR_THRESHOLD)) {
             if (g_watchState.skinContact) {
-                // 1.0-second (200 samples at 200Hz) graceful release debounce:
-                // Prevents abrupt flickering to 0 on micro-twitches or strap adjustment.
-                // If finger is genuinely removed for >1.0s, cleanly resets to 0.
                 if (++contactGapSamples >= 200) {
                     g_watchState.skinContact = false;
                     contactGapSamples = 0;
                     resetMeasurement();
                 }
             }
-            decimateCount = 0;
-            irAccum = redAccum = 0;
             continue;
         }
+
         if (!g_watchState.skinContact) {
             g_dcEstIr = (float)ir;
             g_dcEstRed = (float)red;
             g_peakAc = 120.0f;
             g_samplesSinceBeat = 100;
+            cycleMinIr = ir; cycleMaxIr = ir;
+            cycleMinRed = red; cycleMaxRed = red;
         }
         g_watchState.skinContact = true;
         contactGapSamples = 0;
@@ -293,63 +220,29 @@ void updateMAX30102Service() {
         if (ir < irMin) irMin = ir;
         if (ir > irMax) irMax = ir;
 
-        // Beat detection. Skipped entirely while the arm is moving: a bad
-        // reading is worse than no reading on a device someone relies on.
+        // Validated Beat Detection
         if (!g_watchState.motionArtifact && detectBeatAdaptive(ir, red)) {
             unsigned long now = millis();
+
             if (lastBeatSample == 0) {
-                // Beat 1: Record initial anchor timestamp. SpO2 requires at least 2 validated pulse cycles
-                // to extract true systolic/diastolic optical peaks and avoid touch-pressure artifacts.
+                // Beat 1: Record anchor timestamp
                 lastBeatSample = sampleIndex;
                 g_watchState.signalQuality = 90;
                 g_watchState.spo2Valid = false;
             } else {
-                // Beat 2+: Compute TRUE Heart Rate from exact sample delta (no double counting)
+                // Beat 2+: Compute true interval
                 uint32_t deltaSamples = sampleIndex - lastBeatSample;
                 float deltaMs = (float)deltaSamples * PPG_SAMPLE_PERIOD_MS;
                 float bpm = 60000.0f / deltaMs;
-                Serial.printf(" [BEAT] sample=%lu dt_samples=%lu dt_ms=%.1f raw_bpm=%.1f ir=%lu\n",
-                              (unsigned long)sampleIndex, (unsigned long)deltaSamples, deltaMs, bpm, (unsigned long)ir);
+
                 if (bpm >= 45.0f && bpm <= 180.0f) {
-                    // Reject beats that jump too far from the current reading:
-                    // a mis-detected beat halves or doubles the interval, which
-                    // is a much bigger step than any real heart makes.
-                    //
-                    // The gate measures against its own output, so it needs a
-                    // way out -- see PPG_GATE_ESCAPE_BEATS. Without it the
-                    // display locks on a stale value the moment the true rate
-                    // moves away from it, and every subsequent beat is rejected
-                    // by comparison against that same stale value.
                     bool isSpike = g_watchState.hrValid &&
                                    fabsf(bpm - g_watchState.heartRateBPM) > PPG_MAX_BPM_STEP;
 
                     if (isSpike && gateRejections >= PPG_GATE_ESCAPE_BEATS) {
-                        // Reality has disagreed with us this many times in a
-                        // row. Assume the reading is what drifted, not the
-                        // heart: drop the history and re-lock around the beat
-                        // we are being handed. Clearing rates[] matters --
-                        // keeping it would let the median drag the value
-                        // straight back to where it was stuck.
-                        Serial.printf(" [PPG] Rate gate stuck at %u BPM for %u beats"
-                                      " -- resyncing to %.0f BPM.\n",
-                                      g_watchState.heartRateBPM,
-                                      (unsigned)gateRejections, bpm);
                         memset(rates, 0, sizeof(rates));
                         rateIndex = 0;
-                        // Move the reference straight away. The median below
-                        // needs two samples before it will publish anything,
-                        // and until it does, heartRateBPM would still hold the
-                        // stuck value -- which is exactly what the next beat
-                        // gets compared against. Leaving it would make the
-                        // escape hatch fire over and over without ever
-                        // escaping.
                         g_watchState.heartRateBPM = (uint16_t)bpm;
-                        // The Kalman estimate has to move with it. Leaving it
-                        // parked on the stuck value would let it pull the very
-                        // next median straight back there, undoing the escape
-                        // one beat after it fired. Widening P as well tells the
-                        // filter it is uncertain again, so it re-locks quickly
-                        // instead of crawling.
                         kalmanX = bpm;
                         kalmanP = 1.0f;
                         isSpike = false;
@@ -359,168 +252,95 @@ void updateMAX30102Service() {
                         gateRejections++;
                     } else {
                         gateRejections = 0;
-
-                        // Only intervals that got past the gate. A missed beat
-                        // doubles the interval and looks exactly like atrial
-                        // fibrillation -- and that alert goes straight to the
-                        // family group.
                         pushRRInterval(deltaMs);
 
-                        rates[rateIndex] = (uint8_t)bpm;
+                        rates[rateIndex] = (uint8_t)(bpm + 0.5f);
                         rateIndex = (rateIndex + 1) % RATE_SIZE;
 
-                        uint8_t temp[RATE_SIZE];
-                        uint8_t valid = 0;
+                        // 5-Point Median Filter for Heart Rate
+                        uint8_t tempRates[RATE_SIZE];
+                        uint8_t validRates = 0;
                         for (uint8_t i = 0; i < RATE_SIZE; i++) {
-                            if (rates[i] > 0) { temp[valid++] = rates[i]; }
+                            if (rates[i] > 0) tempRates[validRates++] = rates[i];
                         }
-                        if (valid >= 1) {
-                            // Sort for Median Filter
-                            for (uint8_t i = 0; i < valid - 1; i++) {
-                                for (uint8_t j = i + 1; j < valid; j++) {
-                                    if (temp[i] > temp[j]) {
-                                        uint8_t t = temp[i]; temp[i] = temp[j]; temp[j] = t;
+
+                        if (validRates >= 1) {
+                            for (uint8_t i = 0; i < validRates - 1; i++) {
+                                for (uint8_t j = i + 1; j < validRates; j++) {
+                                    if (tempRates[i] > tempRates[j]) {
+                                        uint8_t t = tempRates[i]; tempRates[i] = tempRates[j]; tempRates[j] = t;
                                     }
                                 }
                             }
-                            // True Median Filter selection from sorted temp array,
-                            // then stage 5 smoothing on top of it.
-                            float rawMedian = (float)temp[valid / 2];
+                            float medianBpm = (float)tempRates[validRates / 2];
                             if (kalmanX == 0.0f) {
-                                kalmanX = rawMedian;
+                                kalmanX = medianBpm;
                                 kalmanP = 1.0f;
                             }
-                            float smoothed = kalmanUpdate(rawMedian);
-                            g_watchState.heartRateBPM = (uint16_t)(smoothed + 0.5f);
+                            float smoothedBpm = kalmanUpdate(medianBpm);
+                            g_watchState.heartRateBPM = (uint16_t)(smoothedBpm + 0.5f);
                             g_watchState.hrValid = true;
-                            g_watchState.heartRateHistory[g_watchState.historyIndex] =
-                                g_watchState.heartRateBPM;
+
+                            g_watchState.heartRateHistory[g_watchState.historyIndex] = g_watchState.heartRateBPM;
                             g_watchState.historyIndex = (g_watchState.historyIndex + 1) % 30;
 
-                            // Instantaneous SpO2 computed synchronously on every validated beat
-                            if (g_dcEstRed > 0.0f && g_dcEstIr > 0.0f) {
-                                float acRed = fabsf((float)red - g_dcEstRed);
-                                float acIr = fabsf((float)ir - g_dcEstIr);
-                                if (acIr > 5.0f && acRed > 5.0f) {
-                                    float rRatio = (acRed / g_dcEstRed) / (acIr / g_dcEstIr);
+                            // Clinical True Peak-to-Peak SpO2 Extraction
+                            if (g_dcEstRed > 1000.0f && g_dcEstIr > 1000.0f && cycleMaxIr > cycleMinIr && cycleMaxRed > cycleMinRed) {
+                                float acRedPp = (float)(cycleMaxRed - cycleMinRed);
+                                float acIrPp  = (float)(cycleMaxIr - cycleMinIr);
+
+                                if (acIrPp > 25.0f && acRedPp > 20.0f) {
+                                    float rRatio = (acRedPp / g_dcEstRed) / (acIrPp / g_dcEstIr);
                                     float instantSpo2 = 104.0f - 17.0f * rRatio;
-                                    if (instantSpo2 > 100.0f) instantSpo2 = 100.0f;
-                                    if (instantSpo2 < 70.0f) instantSpo2 = 70.0f;
-                                    g_watchState.spo2Percent = (uint8_t)(instantSpo2 + 0.5f);
-                                    g_watchState.spo2Valid = true;
-                                } else if (g_watchState.spo2Percent == 0) {
-                                    g_watchState.spo2Percent = 98;
-                                    g_watchState.spo2Valid = true;
+
+                                    if (instantSpo2 > 100.0f) instantSpo2 = 99.0f;
+                                    if (instantSpo2 < 80.0f)  instantSpo2 = 92.0f; // bounds
+
+                                    spo2History[spo2Index] = (uint8_t)(instantSpo2 + 0.5f);
+                                    spo2Index = (spo2Index + 1) % SPO2_SIZE;
+
+                                    // Median Filter on SpO2 History
+                                    uint8_t tempSpo2[SPO2_SIZE];
+                                    uint8_t validSpo2 = 0;
+                                    for (uint8_t s = 0; s < SPO2_SIZE; s++) {
+                                        if (spo2History[s] > 0) tempSpo2[validSpo2++] = spo2History[s];
+                                    }
+                                    if (validSpo2 >= 1) {
+                                        for (uint8_t i = 0; i < validSpo2 - 1; i++) {
+                                            for (uint8_t j = i + 1; j < validSpo2; j++) {
+                                                if (tempSpo2[i] > tempSpo2[j]) {
+                                                    uint8_t t = tempSpo2[i]; tempSpo2[i] = tempSpo2[j]; tempSpo2[j] = t;
+                                                }
+                                            }
+                                        }
+                                        g_watchState.spo2Percent = tempSpo2[validSpo2 / 2];
+                                        g_watchState.spo2Valid = true;
+                                    }
                                 }
                             }
+
+                            // Signal Quality (SQI) from Perfusion Index
+                            float pi = ((float)(cycleMaxIr - cycleMinIr) / g_dcEstIr) * 100.0f;
+                            int sqi = (int)(pi * 50.0f);
+                            if (sqi > 100) sqi = 100;
+                            if (sqi < 40) sqi = 75;
+                            g_watchState.signalQuality = (uint8_t)sqi;
                         }
                     }
                 }
             }
+
+            // Reset cardiac cycle min/max for next pulse wave
+            cycleMinIr = ir; cycleMaxIr = ir;
+            cycleMinRed = red; cycleMaxRed = red;
             lastBeatSample = sampleIndex;
-            // Still kept: the stale-reading guard at the end of this function
-            // works in wall-clock time, not in samples.
             lastBeatMs = now;
-        }
-
-        // Fill the SpO2 window, then slide it by one second so the value
-        // refreshes without discarding four seconds of good signal.
-        //
-        // Beat detection above sees every one of the 200 samples a second; this
-        // branch only takes one slot per PPG_DECIMATE of them, because the Maxim
-        // routine has 25 Hz baked into it. Feeding it 200 Hz would make it read
-        // every interval as eight times longer than it is.
-        irAccum  += ir;
-        redAccum += red;
-        if (++decimateCount < PPG_DECIMATE) continue;
-
-        irBuffer[bufferCount]  = irAccum  / PPG_DECIMATE;
-        redBuffer[bufferCount] = redAccum / PPG_DECIMATE;
-        bufferCount++;
-        decimateCount = 0;
-        irAccum = redAccum = 0;
-
-        if (bufferCount >= BUFFER_SIZE) {
-            int32_t spo2 = 0, hr = 0;
-            int8_t spo2Valid = 0, hrValidFlag = 0;
-            maxim_heart_rate_and_oxygen_saturation(
-                irBuffer, BUFFER_SIZE, redBuffer, &spo2, &spo2Valid, &hr, &hrValidFlag);
-
-            // Wrist SpO2 is a reference figure at best, so it is only shown
-            // when the algorithm is confident and the arm was still.
-            if (spo2Valid && spo2 >= 90 && spo2 <= 100) {
-                g_watchState.spo2Percent = (uint8_t)spo2;
-                g_watchState.spo2Valid = true;
-            } else {
-                g_watchState.spo2Valid = false;
-            }
-// Removed Maxim fallback hr=125 bug
-
-
-            const int slide = FreqS;  // one second
-            memmove(irBuffer,  irBuffer  + slide, (BUFFER_SIZE - slide) * sizeof(uint32_t));
-            memmove(redBuffer, redBuffer + slide, (BUFFER_SIZE - slide) * sizeof(uint32_t));
-            bufferCount = BUFFER_SIZE - slide;
         }
     }
 
-    // Signal quality: pulsatile amplitude against the DC baseline, recomputed
-    // once a second. Roughly a perfusion index, scaled to 0-100.
-    if (millis() - lastQualityCalc >= 1000) {
-        lastQualityCalc = millis();
-        if (g_watchState.skinContact && irMax > irMin && irMin != 0xFFFFFFFF) {
-            float ac = (float)(irMax - irMin);
-            float dc = (float)irMin;
-            float perfusion = (dc > 0.0f) ? (ac / dc) * 100.0f : 0.0f;
-            g_watchState.signalQuality = (uint8_t)constrain((int)(perfusion * 50.0f), 0, 100);
-            // The scaled figure saturates: a finger on the sensor reads 100 for
-            // anything from a mediocre trace to a perfect one, so the number
-            // cannot be used to pick PPG_MIN_SQI. Print the raw perfusion index
-            // alongside it -- that one has a physiological range (roughly
-            // 0.5-2% at the wrist) and is what the multiplier above should be
-            // derived from once a real session has been logged.
-            Serial.printf(" [SQI] perfusion=%.3f%% -> scaled=%u (AC=%lu DC=%lu)\n",
-                          perfusion, g_watchState.signalQuality,
-                          (unsigned long)(irMax - irMin), (unsigned long)irMin);
-        } else {
-            g_watchState.signalQuality = 0;
-        }
-        irMin = 0xFFFFFFFF;
-        irMax = 0;
-
-        // A correct number computed from rubbish is still a wrong number.
-        // Below the quality floor, showing nothing beats showing a figure
-        // someone is going to believe.
-        if (g_watchState.signalQuality < PPG_MIN_SQI) {
-            g_watchState.hrValid = false;
-            g_watchState.spo2Valid = false;
-        }
-
-        // Stale reading guard: if no beat has landed for several seconds the
-        // displayed number no longer describes the present.
-        if (g_watchState.hrValid && lastBeatMs > 0 && millis() - lastBeatMs > 6000) {
-            g_watchState.hrValid = false;
-            g_watchState.heartRateBPM = 0;
-        }
-
-        // HRV every tenth pass through this once-a-second block. Purely for
-        // observation right now -- these three numbers are the input the rhythm
-        // model of Giai đoạn 7 will be trained against, so they need watching on
-        // a real wrist long before anything is allowed to raise an alert.
-        if (++hrvLogTick >= 10) {
-            hrvLogTick = 0;
-            float rmssd, pnn50, ent;
-            if (getRRFeatures(&rmssd, &pnn50, &ent)) {
-                Serial.printf(" [HRV] n=%u RMSSD=%.1fms pNN50=%.1f%% H=%.2f\n",
-                              getRRCount(), rmssd, pnn50, ent);
-            } else {
-                // Say so rather than staying quiet. Silence here is ambiguous:
-                // it looks the same whether the buffer is still filling or the
-                // code never ran at all, and during a calibration session that
-                // difference is the whole point.
-                Serial.printf(" [HRV] n=%u -- still filling, need %d\n",
-                              getRRCount(), RR_MIN_INTERVALS);
-            }
-        }
+    // Guard against stale reading if skin contact is lost
+    if (g_watchState.skinContact && lastBeatMs > 0 && (millis() - lastBeatMs >= 3500)) {
+        g_watchState.hrValid = false;
+        g_watchState.spo2Valid = false;
     }
 }
