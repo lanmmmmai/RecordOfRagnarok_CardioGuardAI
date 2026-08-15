@@ -25,6 +25,10 @@ static float confirmMaxDev = 0.0f;
 static const char* entryPathName = "";
 static float peakImpactG = 0.0f;
 
+// Rate limiter for the near-miss line, so a shaken wrist cannot flood the log
+// that the same session is using to collect training data.
+static unsigned long lastNearMissLog = 0;
+
 void initFallDetector() {
     g_watchState.fallMonitoringActive = true;
     g_watchState.fallDetected = false;
@@ -90,6 +94,26 @@ void updateFallDetector() {
 
     unsigned long now = millis();
 
+#if FALL_LOG_RAW_SAMPLES
+    // Every sample, every tick, whatever the state -- this is the training set.
+    //
+    // Logging only during confirmation would capture falls and nothing else,
+    // and a classifier trained on that learns to answer "fall" to everything it
+    // is ever shown. What teaches it to say no is the ordinary hours: walking,
+    // eating, clapping, putting a mug down hard. Those are the negatives, and
+    // they only exist in the log if the log never stops.
+    //
+    // The state column is what makes the file labellable afterwards: it says
+    // which samples the 4-phase algorithm was reacting to, so a run can be cut
+    // into events without guessing from the timestamps.
+    Serial.printf("FALLCSV,%lu,%d,%d,%d,%d,%d,%d,%.3f,%d\n",
+                  now,
+                  g_watchState.accX,  g_watchState.accY,  g_watchState.accZ,
+                  g_watchState.gyroX, g_watchState.gyroY, g_watchState.gyroZ,
+                  totalG,
+                  (int)g_watchState.fallState);
+#endif
+
     if (g_watchState.fallState == FALL_STATE_NORMAL) {
         // Two ways into the confirmation phase. Path A is the classic
         // free-fall-then-impact signature. Path B exists because insisting on
@@ -133,6 +157,23 @@ void updateFallDetector() {
             entryPathName = entryPath;
             Serial.printf(" -> [FALL] Impact %.2fg via %s. Confirming for %lu ms...\n",
                           totalG, entryPath, (unsigned long)FALL_CONFIRM_WINDOW_MS);
+            return;
+        }
+
+        // Anything strong enough to be worth looking at, but not strong enough
+        // to enter confirmation, gets one line saying so.
+        //
+        // Without this the serial output is identical whether the wearer never
+        // fell or the thresholds are set too high to catch anything -- and
+        // during calibration those are exactly the two cases that need telling
+        // apart. Printing the near-miss and the bar it failed to clear turns a
+        // silent session into a measurement.
+        if (totalG > FALL_NEARMISS_LOG_G && now - lastNearMissLog >= FALL_NEARMISS_LOG_MS) {
+            lastNearMissLog = now;
+            Serial.printf(" -> [FALL] near miss: %.2fg (needs %.2fg standalone, "
+                          "or %.2fg within %lu ms of free fall)\n",
+                          totalG, (float)FALL_IMPACT_STANDALONE_G,
+                          (float)FALL_IMPACT_G, (unsigned long)FALL_IMPACT_WINDOW_MS);
         }
         return;
     }
@@ -141,16 +182,6 @@ void updateFallDetector() {
         unsigned long elapsed = now - confirmStart;
 
         if (totalG > peakImpactG) peakImpactG = totalG;
-
-#if FALL_LOG_RAW_SAMPLES
-        // One line per sample, for offline calibration and as training data
-        // for the fall model. Prefixed so it can be grepped straight into CSV.
-        Serial.printf("FALLCSV,%lu,%d,%d,%d,%d,%d,%d,%.3f\n",
-                      elapsed,
-                      g_watchState.accX,  g_watchState.accY,  g_watchState.accZ,
-                      g_watchState.gyroX, g_watchState.gyroY, g_watchState.gyroZ,
-                      totalG);
-#endif
 
         // Phase 3: the wearer should be lying still. Track the worst deviation
         // from 1g; a clap or a slammed hand keeps moving and blows past the

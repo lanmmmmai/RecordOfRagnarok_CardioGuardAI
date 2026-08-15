@@ -201,6 +201,21 @@
 // silently shifts.
 #define FALL_ACCEL_LSB_PER_G      4096.0f
 
+// How many times updateQMI8658Service() reads the sensor per 20 ms tick,
+// keeping the sample with the largest acceleration magnitude.
+//
+// The sensor runs at 235 Hz -- a new sample every 4.3 ms -- while the loop
+// ticks every 20 ms. Reading once per tick therefore discards three samples out
+// of four, and the one kept is chosen by loop timing rather than by what the
+// wrist was doing. A floor impact lasts a few milliseconds, so it usually fell
+// in a discarded sample and the recorded peak was a random point on the slope.
+//
+// Four reads at 4300 us cover 12.9 ms of the 20 ms tick. Cost is roughly
+// 4 x 12 bytes over I2C at 400 kHz plus the waits, well inside the tick budget
+// shared with the 200 Hz PPG sampling and the display.
+#define QMI_SAMPLES_PER_TICK      4
+#define QMI_SAMPLE_GAP_US         4300
+
 // Phase 1 -- free fall. Below this total acceleration the wrist is unsupported.
 #define FALL_FREEFALL_G           0.4f
 
@@ -243,10 +258,27 @@
 // gravity direction before the event and after it.
 #define FALL_ORIENTATION_MIN_DEG  30.0f
 
-// Set to 1 to stream one CSV line per IMU sample while a fall is being
-// confirmed. Off by default: it costs about 5 ms of blocking serial writes per
-// 20 ms tick. Turn it on for dedicated data-collection sessions -- the lines
-// are prefixed FALLCSV and are the training data for the fall model.
+// Print a one-line note when acceleration passes this without being large
+// enough to start confirmation, at most once per FALL_NEARMISS_LOG_MS.
+//
+// Set below FALL_IMPACT_G so both entry paths have a margin above it. Its job
+// is to distinguish "nothing happened" from "the thresholds are too high to
+// catch anything" -- two cases that otherwise produce identical silence.
+#define FALL_NEARMISS_LOG_G       1.8f
+#define FALL_NEARMISS_LOG_MS      500UL
+
+// Set to 1 to stream one CSV line per IMU tick, continuously, in every state.
+//
+// This is the training set for the fall model, and it has to run continuously
+// rather than only during confirmation: a classifier shown nothing but falls
+// learns to call everything a fall. The ordinary hours in between -- walking,
+// eating, clapping, setting a mug down -- are the negative examples, and they
+// exist only if the log never stops.
+//
+// Off by default: about 60 bytes per 20 ms tick is ~3 kB/s of blocking serial
+// writes. Turn it on for dedicated collection sessions, and turn it back off
+// afterwards. Lines are prefixed FALLCSV; the columns are
+//   millis, accX, accY, accZ, gyroX, gyroY, gyroZ, totalG, fallState
 #define FALL_LOG_RAW_SAMPLES      0
 
 // ---------------------------------------------------------------------------
