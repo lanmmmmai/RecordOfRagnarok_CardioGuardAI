@@ -268,9 +268,14 @@ void updateMAX30102Service() {
         if (ir < (g_watchState.skinContact ? PPG_CONTACT_IR_RELEASE
                                            : PPG_CONTACT_IR_THRESHOLD)) {
             if (g_watchState.skinContact) {
-                g_watchState.skinContact = false;
-                contactGapSamples = 0;
-                resetMeasurement();
+                // 1.0-second (200 samples at 200Hz) graceful release debounce:
+                // Prevents abrupt flickering to 0 on micro-twitches or strap adjustment.
+                // If finger is genuinely removed for >1.0s, cleanly resets to 0.
+                if (++contactGapSamples >= 200) {
+                    g_watchState.skinContact = false;
+                    contactGapSamples = 0;
+                    resetMeasurement();
+                }
             }
             decimateCount = 0;
             irAccum = redAccum = 0;
