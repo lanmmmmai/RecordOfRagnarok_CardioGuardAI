@@ -1,3 +1,9 @@
+> 🗄️ **FILE NÀY ĐÃ NGHỈ HƯU — mô tả một kiến trúc chưa từng tồn tại. Đừng làm theo.**
+> Lý do và bảng đối chiếu với code thật: [README_PLAN_INDEX.md](README_PLAN_INDEX.md)
+> Nguồn sự thật: [SYSTEM_ARCHITECTURE_SPEC.md](../../SYSTEM_ARCHITECTURE_SPEC.md) và [src/](../../src/)
+
+---
+
 # Task 8: FreeRTOS Dual-Core Task Integration & Main Program Entry
 
 ## Mục tiêu

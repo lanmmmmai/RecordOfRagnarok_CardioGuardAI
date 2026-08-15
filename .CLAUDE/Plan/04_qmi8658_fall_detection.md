@@ -1,3 +1,9 @@
+> 🗄️ **FILE NÀY ĐÃ NGHỈ HƯU — mô tả một kiến trúc chưa từng tồn tại. Đừng làm theo.**
+> Lý do và bảng đối chiếu với code thật: [README_PLAN_INDEX.md](README_PLAN_INDEX.md)
+> Nguồn sự thật: [SYSTEM_ARCHITECTURE_SPEC.md](../../SYSTEM_ARCHITECTURE_SPEC.md) và [src/](../../src/)
+
+---
+
 # Task 4: QMI8658 3D IMU Driver & 4-Stage Edge Fall Detection Algorithm
 
 ## Mục tiêu

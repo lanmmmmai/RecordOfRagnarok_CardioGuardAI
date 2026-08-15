@@ -1,109 +1,224 @@
-# RecordOfRagnarok_CardioGuardAI 🛡️❤️
+# CardioGuardAI 🛡️❤️
 
-> **CardioGuardAI** - Hệ thống Cảnh báo Té ngã, Loạn nhịp tim & Lọc Nhiễu Tín hiệu tại Biên (ESP32-S3 Watch + TinyML AI INT8 + Direct Telegram Alert).
+**Đồng hồ đeo tay phát hiện té ngã và theo dõi sức khoẻ, chạy trên Waveshare ESP32-S3-Touch-LCD-1.28-B.**
+Khi phát hiện cú ngã, đồng hồ đếm ngược 15 giây trên màn hình cảm ứng; nếu người đeo không bấm HUỶ,
+nó gửi cảnh báo vào nhóm Telegram của gia đình và báo sang điện thoại qua BLE.
+
+> ⚠️ **Đây là đồ án học tập, không phải thiết bị y tế.** Các chỉ số nhịp tim và SpO₂ chỉ để tham khảo,
+> không dùng để chẩn đoán hay điều trị. Xem [mục Miễn trừ](#-miễn-trừ) ở cuối trang.
 
 ---
 
-## 📌 Cấu trúc Thư mục Dự án Chi tiết (Project Structure)
+## 📊 Trạng thái thật của dự án
 
-Dưới đây là cấu trúc thư mục hoàn chỉnh của dự án tại `D:\AIoT\RecordOfRagnarok_CardioGuardAI` để lập trình viên và người dùng dễ dàng theo dõi và làm theo:
+Bảng này là **sự thật về code trong `src/`**, không phải danh sách mong muốn.
+Mỗi dòng "Đang chạy" đều trỏ được tới file cụ thể.
 
-```text
-D:\AIoT\RecordOfRagnarok_CardioGuardAI\
-├── .CLAUDE/                                # Thư mục chứa Kế hoạch Triển khai Mô-đun hóa
-│   └── Plan/
-│       ├── README_PLAN_INDEX.md            # Chỉ mục tổng hợp các Plan
-│       ├── 01_project_scaffolding.md       # Task 1: Cấu hình khung PlatformIO & Header
-│       ├── 02_battery_monitor.md           # Task 2: Đo Pin ADC GPIO 1 phần cứng
-│       ├── 03_max30102_dsp_pipeline.md     # Task 3: Lọc nhiễu PPG 5 tầng tại biên
-│       ├── 04_qmi8658_fall_detection.md    # Task 4: Thuật toán té ngã 3D 4 giai đoạn
-│       ├── 05_tinyml_ai_models.md          # Task 5: Python AI Trainer & Exporter INT8
-│       ├── 06_lvgl_ui_screens.md           # Task 6: LVGL UI & Màn hình nhấp nháy 15s đếm ngược
-│       ├── 07_wifi_telegram_client.md      # Task 7: Wi-Fi & Telegram Bot API Client
-│       └── 08_freertos_main_integration.md # Task 8: Tích hợp Đa luồng FreeRTOS Lõi kép
-│
-├── ai_models/                              # Mã nguồn Python Huấn luyện & Lượng tử hóa AI
-│   ├── dataset_downloader.py               # Tải 3 tập dữ liệu từ Kaggle
-│   ├── train_fall_model.py                 # Train AI Té ngã & convert INT8 (~8KB)
-│   └── train_arrhythmia_model.py           # Train AI Loạn nhịp tim & convert INT8 (~30KB)
-│
-├── firmware/                               # Mã nguồn PlatformIO C++ cho Đồng hồ ESP32-S3
-│   ├── platformio.ini                      # File cấu hình nạp firmware & thư viện
-│   │
-│   ├── include/                            # Các file Header C++ cấu hình & Trọng số AI
-│   │   ├── app_config.h                    # Cấu hình GPIO, Wi-Fi, Telegram Token & Chat ID
-│   │   ├── app_state.h                     # Cấu trúc lưu trạng thái WatchState & FallState
-│   │   ├── ui_config.h                     # Bảng màu sắc semantic giao diện LVGL
-│   │   ├── fall_model_data.h               # Trọng số Mô hình AI Té ngã INT8 (~8KB)
-│   │   └── arrhythmia_model_data.h         # Trọng số Mô hình AI Loạn nhịp tim INT8 (~30KB)
-│   │
-│   ├── src/                                # Mã nguồn xử lý chính C++
-│   │   ├── main.cpp                        # Khởi tạo Lõi kép FreeRTOS Core 0 & Core 1
-│   │   │
-│   │   ├── battery/                        # Đọc dung lượng Pin ADC GPIO 1
-│   │   │   ├── battery_monitor.h
-│   │   │   └── battery_monitor.cpp
-│   │   │
-│   │   ├── sensors/                        # Driver Cảm biến & Lọc nhiễu DSP 5 tầng
-│   │   │   ├── max30102_service.h          # MAX30102 PPG Driver & 5-Stage DSP Noise Filter
-│   │   │   ├── max30102_service.cpp
-│   │   │   ├── qmi8658_service.h           # QMI8658 3D IMU Driver & Edge AI Fall Predictor
-│   │   │   └── qmi8658_service.cpp
-│   │   │
-│   │   ├── ui/                             # Giao diện Màn hình tròn 240x240 LVGL
-│   │   │   ├── ui.h
-│   │   │   ├── ui.cpp
-│   │   │   ├── screen_home.cpp             # Màn hình HOME chính
-│   │   │   ├── screen_heart_rate.cpp       # Màn hình đo nhịp tim chi tiết
-│   │   │   ├── screen_spo2.cpp             # Màn hình đo SpO2 chi tiết
-│   │   │   └── screen_fall_alert.cpp       # Màn hình nhấp nháy đỏ 15s đếm ngược + Nút CANCEL
-│   │   │
-│   │   └── connectivity/                   # Kết nối Wi-Fi & Telegram Bot API Client
-│   │       ├── telegram_bot.h              # Gọi Telegram HTTPS API POST
-│   │       └── telegram_bot.cpp
-│   │
-│   └── assets/                             # Font chữ & Icons LVGL
-│
-├── README.md                               # Giới thiệu tổng quan dự án CardioGuardAI
-└── SYSTEM_ARCHITECTURE_SPEC.md             # Bản Đặc tả Kiến trúc Kỹ thuật Toàn diện
+| Hạng mục | Trạng thái | Ở đâu |
+|---|---|---|
+| Giao diện 7 màn hình, cảm ứng, font tiếng Việt có dấu | ✅ Đang chạy | [src/ui/](src/ui/) |
+| Phát hiện té ngã 4 pha + 2 đường vào | ✅ Đang chạy | [fall_detector.cpp](src/fall_detection/fall_detector.cpp) |
+| Đếm ngược 15s + nút HUỶ + SOS thủ công | ✅ Đang chạy | [screen_fall_alert.cpp](src/ui/screen_fall_alert.cpp) (vẽ) · [ui_manager.cpp](src/ui/ui_manager.cpp) (chạm) |
+| Gửi Telegram + hàng đợi NVS 8 sự kiện + retry 3 lần | ✅ Đang chạy | [alert_dispatcher.cpp](src/connectivity/alert_dispatcher.cpp) |
+| BLE GATT: vitals / fall / status / command | ✅ Đang chạy | [ble_service.cpp](src/connectivity/ble_service.cpp) · [BLE_PROTOCOL.md](BLE_PROTOCOL.md) |
+| Đo nhịp tim + SpO₂ (PPG) | ✅ Đang chạy | [max30102_service.cpp](src/sensors/max30102_service.cpp) |
+| Đo pin qua ADC | ✅ Đang chạy | [battery_monitor.cpp](src/sensors/battery_monitor.cpp) |
+| **Hiệu chuẩn ngưỡng té ngã** | ⚠️ Chưa — toàn số phỏng đoán | [app_config.h §Fall](include/app_config.h) |
+| **DSP tầng 4 + 5** (trung vị, Kalman, chặn nhịp ảo) | ❌ Chưa triển khai | Kế hoạch: SPEC §11 |
+| **Lấy mẫu PPG 200 Hz** (hiện 25 Hz hiệu dụng) | ❌ Chưa triển khai | Kế hoạch: SPEC §11 |
+| **Mô hình TinyML** (té ngã + sàng lọc nhịp) | ❌ Chưa triển khai | Kế hoạch: SPEC §9 |
+| **Nút SOS vật lý, cảnh báo pin yếu, cảnh báo ngưỡng sinh lý** | ❌ Chưa triển khai | Kế hoạch: SPEC §11 |
+
+**Danh sách hạn chế đầy đủ, xếp theo mức nghiêm trọng:**
+[SYSTEM_ARCHITECTURE_SPEC.md §11](SYSTEM_ARCHITECTURE_SPEC.md#11-hạn-chế-đã-biết--lộ-trình)
+
+Firmware hiện tại chiếm **RAM 17.3%** và **Flash 40.5%**.
+
+---
+
+## 🔩 Phần cứng
+
+| Thành phần | Chi tiết |
+|---|---|
+| Bo mạch | Waveshare **ESP32-S3-Touch-LCD-1.28-B** |
+| MCU | ESP32-S3**R2** — 2 MB PSRAM chế độ **quad** (không phải octal) |
+| Flash | W25Q128JVSIQ 16 MB, QIO @ 80 MHz |
+| Màn hình | GC9A01 tròn 240×240, SPI |
+| Cảm ứng | CST816S @ `0x15` (I2C bus 1) |
+| IMU | QMI8658 6 trục @ `0x6B` (I2C bus 1), cấu hình ±8g |
+| **PPG** | **MAX30102 — module rời MH-ET LIVE, KHÔNG có sẵn trên bo** |
+| Pin | LiPo, đầu nối **MX1.25 2P**, sạc qua ETA6096 |
+| Ổn áp | ME6217C33M5G, ~800 mA — đây là trần ngân sách dòng khi gắn thêm module |
+
+### Đấu nối module MAX30102
+
+Bo Waveshare **không có** cảm biến PPG. Phải gắn thêm một module MAX30102 rời vào
+đầu nối mở rộng **SH1.0**, chạy trên một bus I2C thứ hai bằng phần mềm:
+
+| Chân module MAX30102 | Nối vào SH1.0 | Ghi chú |
+|---|---|---|
+| VIN | `3V3` | Module MH-ET LIVE đã có sẵn LDO 3.3V |
+| GND | `GND` | |
+| SDA | `GPIO 15` | I2C bus 2 |
+| SCL | `GPIO 16` | I2C bus 2 |
+| INT | *không nối* | Firmware đọc theo kiểu polling |
+
+Địa chỉ I2C của cảm biến là `0x57`. Bốn chân mở rộng còn lại (`17`, `18`, `21`, `33`) vẫn trống.
+
+> 💡 Nếu bạn không gắn module này, firmware vẫn boot và chạy bình thường — màn hình
+> sẽ báo `PPG: FAIL` và nhịp tim/SpO₂ hiện `--`. Phát hiện té ngã không phụ thuộc vào PPG.
+
+---
+
+## 🚀 Build & nạp
+
+Cần [PlatformIO](https://platformio.org/) (khuyên dùng qua VS Code).
+
+**1. Tạo file bí mật.** Repo cố tình không chứa mật khẩu:
+
+```bash
+cp include/secrets.h.example include/secrets.h
 ```
 
+Mở `include/secrets.h` và điền SSID Wi-Fi, mật khẩu, token bot Telegram và Chat ID.
+File này nằm trong `.gitignore` — **đừng bao giờ commit nó**.
+
+**2. Sửa cổng COM** trong [platformio.ini](platformio.ini) (`upload_port` / `monitor_port`) cho khớp máy bạn.
+
+**3. Build và nạp:**
+
+```bash
+pio run --target upload
+pio device monitor
+```
+
+**4. Đối chiếu log khởi động.** Cứ 2 giây firmware in một khối trạng thái.
+Đây là công cụ chẩn đoán chính, và cũng là nơi lấy số để hiệu chuẩn:
+
+```text
+==========================================================================
+ [WATCH LOG] 2026-08-15 14:22:07 | WiFi: CONNECTED (192.168.1.42) | BLE: AWAY | BAT: 87% (4.02V, raw 1340 mV)
+--------------------------------------------------------------------------
+ [SENSOR] IMU: OK | PPG: OK | TOUCH: OK | Free heap: 198432 B
+ [HEALTH] Status: NO SKIN CONTACT (IR: 21900, threshold: 35000)
+ [MOTION] Accel (   120,   -84,  4050) | Gyro (    -2,     5,     1)
+ [FALL]   Status: OK (NORMAL) | Countdown: 15s | Queued alerts: 0
+ [TOUCH]  State: IDLE
+==========================================================================
+```
+
+Cả ba cảm biến phải hiện `OK`. Nếu `PPG: FAIL` → kiểm tra lại đấu nối GPIO 15/16 ở trên.
+
 ---
 
-## 🛠️ Luồng hoạt động (System Workflow)
+## 🛠️ Luồng hoạt động
 
 ```text
 +-----------------------------------------------------------------------+
-|                       ESP32-S3 Smartwatch (Edge)                      |
-|  - Cảm biến MAX30102 (Lọc nhiễu Tín hiệu DSP 5 Tầng)                 |
-|  - Cảm biến QMI8658 + TinyML AI INT8 (Dự đoán Té ngã & Loạn nhịp tim) |
+|                    ESP32-S3 (một vòng lặp hợp tác)                    |
+|  QMI8658 @ 50Hz  ->  Té ngã 4 pha: rơi tự do -> va chạm ->            |
+|                      nằm yên 3s -> đổi tư thế >30 deg                 |
+|  MAX30102 @ 25Hz ->  Nhịp tim + SpO2 (DSP tầng 1-3)                   |
 +-----------------------------------------------------------------------+
                                    |
-              (Nghi ngờ Té ngã / Loạn nhịp tim / Bấm SOS)
+        (Té ngã đã xác nhận  |  SOS thủ công  |  Lệnh SOS từ điện thoại)
                                    v
 +-----------------------------------------------------------------------+
-|               Cảnh báo Nhấp nháy Màn hình (15s Đếm ngược)             |
-|             [ Nút HỦY / CANCEL to trên Màn hình Cảm ứng ]             |
+|            Màn hình đỏ nhấp nháy + đếm ngược 15 giây                  |
+|                  [ Nút HUỶ lớn trên cảm ứng ]                         |
+|         (đồng thời gửi ngay BLE INDICATE cho điện thoại)              |
 +-----------------------------------------------------------------------+
            |                                             |
-    (Bấm CANCEL)                                   (Hết 15s Timeout)
+     (Bấm HUỶ)                                    (Hết 15 giây)
            v                                             v
-+-----------------------+               +-------------------------------+
-|  ✓ Trở về bình thường |               | Gửi Telegram Bot API (Wi-Fi)  |
-+-----------------------+               +-------------------------------+
++-----------------------+          +------------------------------------+
+| ✓ Trở về bình thường  |          |  Telegram Bot API qua HTTPS        |
++-----------------------+          |  - thất bại: retry tối đa 3 lần    |
+                                   |  - mất mạng: xếp hàng vào NVS (8)  |
+                                   +------------------------------------+
                                                          |
                                                          v
-                                        +-------------------------------+
-                                        |  📱 Telegram Group Gia đình  |
-                                        | (Tất cả thành viên nhận tin)  |
-                                        +-------------------------------+
+                                          +--------------------------+
+                                          |  📱 Nhóm Telegram gia đình |
+                                          +--------------------------+
 ```
 
----
-
-## 📖 Tài liệu Hướng dẫn Chi tiết
-- 📄 **[`SYSTEM_ARCHITECTURE_SPEC.md`](SYSTEM_ARCHITECTURE_SPEC.md)** - Bản Đặc tả Kiến trúc Kỹ thuật Toàn diện.
-- 📂 **[`.CLAUDE/Plan/README_PLAN_INDEX.md`](.CLAUDE/Plan/README_PLAN_INDEX.md)** - Kế hoạch Triển khai Lập trình Mô-đun hóa.
+Cảnh báo đi ra **hai đường độc lập**: BLE bắn ngay khi bắt đầu đếm ngược (để điện thoại
+biết cả khi Wi-Fi chết), Telegram bắn khi hết 15 giây. Ngoài ra khi điện thoại rời khỏi
+tầm BLE quá 60 giây, đồng hồ tự gửi Telegram báo mất kết nối.
 
 ---
-*Developed for RecordOfRagnarok CardioGuardAI Project.*
+
+## 📁 Cấu trúc thư mục
+
+```text
+RecordOfRagnarok_CardioGuardAI/
+├── platformio.ini              # Cấu hình build, chân TFT_eSPI, lib_deps
+├── include/
+│   ├── app_config.h            # Chân GPIO + TOÀN BỘ ngưỡng, kèm ghi chú hiệu chuẩn
+│   ├── app_state.h             # struct WatchState — trạng thái dùng chung
+│   ├── ui_config.h             # Bảng màu ngữ nghĩa
+│   ├── secrets.h.example       # Mẫu; copy thành secrets.h (đã git-ignore)
+│   └── fonts/                  # Font VLW tiếng Việt biên dịch thành mảng C
+├── src/
+│   ├── main.cpp                # setup() + một loop() hợp tác, không FreeRTOS task
+│   ├── sensors/                # battery, qmi8658, max30102, cst816s
+│   ├── fall_detection/         # Máy trạng thái té ngã 4 pha
+│   ├── connectivity/           # wifi_manager, alert_dispatcher, ble_service
+│   └── ui/                     # ui_manager + 7 màn hình + vn_font
+├── tools/
+│   ├── make_vlw.py             # Sinh font VLW tiếng Việt
+│   └── check_fit.py            # Kiểm tra chuỗi có tràn màn hình tròn không
+└── docs/                       # Tài liệu phần cứng, hướng dẫn test, đặc tả UI
+```
+
+Không có FreeRTOS task nào. `loop()` chạy hợp tác theo mốc thời gian:
+cảm ứng mỗi vòng · cảm biến 20 ms · vẽ 33 ms (~30 FPS) · pin + Wi-Fi 5 s · log 2 s.
+
+---
+
+## 📖 Tài liệu
+
+| File | Nội dung |
+|---|---|
+| [SYSTEM_ARCHITECTURE_SPEC.md](SYSTEM_ARCHITECTURE_SPEC.md) | **Nguồn sự thật về kiến trúc.** 11 mục, mỗi khẳng định đều trỏ được tới dòng code — hoặc đánh dấu rõ `CHƯA TRIỂN KHAI` |
+| [BLE_PROTOCOL.md](BLE_PROTOCOL.md) | Đặc tả GATT cho ứng dụng điện thoại: UUID, byte offset, ý nghĩa từng bit |
+| [docs/ESP32-S3-Touch-LCD-1.28-B_Technical_Overview.md](docs/ESP32-S3-Touch-LCD-1.28-B_Technical_Overview.md) | Phân tích phần cứng bo mạch |
+| [docs/HARDWARE_TEST_GUIDE.md](docs/HARDWARE_TEST_GUIDE.md) | Quy trình kiểm tra từng cảm biến |
+| [docs/UI_SPEC_Smart_Health_Fall_Detection_Watch.md](docs/UI_SPEC_Smart_Health_Fall_Detection_Watch.md) | Đặc tả giao diện |
+| [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) | 🗄️ Đã nghỉ hưu — giữ lại để tra cứu bài học |
+| [.CLAUDE/Plan/](.CLAUDE/Plan/) | 🗄️ Đã nghỉ hưu — mô tả kiến trúc LVGL/FreeRTOS chưa từng tồn tại |
+
+---
+
+## 🗺️ Lộ trình
+
+| Giai đoạn | Nội dung |
+|---|---|
+| ~~0–3~~ | ~~Xử lý bí mật rò rỉ · đưa code vào repo · sửa lỗi té ngã · viết lại tài liệu~~ ✅ |
+| **3b** | Hiệu chuẩn ngưỡng té ngã bằng thử nghiệm thật (thả xuống đệm, đọc dòng quyết định trong log) |
+| **5** | DSP tầng 4+5 · nâng PPG lên 200 Hz để đo được khoảng RR |
+| **6** | Nút SOS vật lý · cảnh báo pin yếu · cảnh báo ngưỡng sinh lý |
+| **7** | TinyML: cây quyết định té ngã (UMAFall/FallAllD + dữ liệu tự thu) · sàng lọc khoảng RR (MIT-BIH afdb) |
+| **8** | Đánh giá: ma trận nhầm lẫn, độ nhạy/đặc hiệu, ROC, so sánh với baseline 4 pha |
+| **4** | Chuyển framework sang `arduino, espidf` (làm sau cùng) |
+
+Chi tiết kỹ thuật và lý do của từng hạng mục nằm ở
+[SYSTEM_ARCHITECTURE_SPEC.md §9 và §11](SYSTEM_ARCHITECTURE_SPEC.md).
+
+---
+
+## ⚕️ Miễn trừ
+
+CardioGuardAI **không phải thiết bị y tế** và chưa được kiểm định lâm sàng.
+
+- Nhịp tim và SpO₂ đo bằng cảm biến quang học ở cổ tay — vị trí có ít mao mạch,
+  dễ nhiễu do cử động, và độ chính xác thấp hơn máy đo kẹp ngón tay rõ rệt.
+- Ngưỡng phát hiện té ngã **chưa được hiệu chuẩn**. Thiết bị sẽ vừa bỏ sót cú ngã thật,
+  vừa báo động nhầm. Đừng dựa vào nó như biện pháp an toàn duy nhất cho người thân.
+- Mọi tính năng liên quan tới nhịp tim bất thường là **gợi ý sàng lọc**, không phải chẩn đoán.
+  Có triệu chứng thì đi khám, đừng hỏi cái đồng hồ.
+
+---
+
+*Dự án CardioGuardAI — Record of Ragnarok.*
