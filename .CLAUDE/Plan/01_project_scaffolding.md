@@ -11,7 +11,7 @@ Khởi tạo cấu trúc dự án PlatformIO cho vi điều khiển Waveshare ES
 
 ## Các Bước Triển Khai
 - [ ] **Bước 1**: Viết file `platformio.ini` nạp đủ thư viện LVGL 8.x, MAX30105, ArduinoJson.
-- [ ] **Bước 2**: Viết `app_config.h` chứa sơ đồ chân GPIO, thông số Wi-Fi, Telegram Bot Token (`YOUR_TELEGRAM_BOT_TOKEN`) & Chat ID (`YOUR_TELEGRAM_CHAT_ID`).
+- [ ] **Bước 2**: Viết `app_config.h` chứa sơ đồ chân GPIO. Thông số Wi-Fi, Telegram Bot Token & Chat ID nằm ở `include/secrets.h` (đã git-ignore, **không commit**).
 - [ ] **Bước 3**: Viết `app_state.h` định nghĩa model lưu trạng thái đồng hồ `WatchState` & enum `FallState`.
 - [ ] **Bước 4**: Viết `ui_config.h` định nghĩa màu sắc semantic.
 - [ ] **Bước 5**: Kiểm thử biên dịch khung code.

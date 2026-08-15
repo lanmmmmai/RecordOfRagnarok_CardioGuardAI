@@ -1,7 +1,7 @@
 # Task 7: Wi-Fi & Direct Telegram Bot API HTTPS Client
 
 ## Mục tiêu
-Lập trình module kết nối Wi-Fi và phát tin nhắn báo động trực tiếp qua Telegram Bot API (HTTPS POST) tới Group Chat Gia đình ('Gia đình là số 1' - Chat ID: YOUR_TELEGRAM_CHAT_ID).
+Lập trình module kết nối Wi-Fi và phát tin nhắn báo động trực tiếp qua Telegram Bot API (HTTPS POST) tới Group Chat Gia đình (Chat ID cấu hình trong `include/secrets.h`).
 
 ## Các File Cần Tạo / Sửa
 - `firmware/src/connectivity/telegram_bot.h`

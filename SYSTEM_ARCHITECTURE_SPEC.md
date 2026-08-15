@@ -25,7 +25,7 @@
 Hệ thống hoạt động theo tiêu chí **Tối giản - Tin cậy - Xử lý tại Biên (Edge Computing)**:
 - **Xử lý hoàn toàn tại biên (ESP32-S3)**: Mọi dữ liệu từ cảm biến PPG (MAX30102) và cảm biến gia tốc (QMI8658) được tính toán, lọc nhiễu 5 tầng, và chạy suy luận mô hình AI TinyML INT8 ngay trên chip ESP32-S3 mà không cần máy chủ trung gian.
 - **Cảnh báo tại chỗ**: Phát nhấp nháy màn hình màu đỏ dồn dập kèm 15 giây đếm ngược và nút **HỦY / CANCEL** chạm cảm ứng kích thước to để loại bỏ báo động giả khi ngã nhẹ hoặc bấm nhầm.
-- **Gửi tin nhắn trực tiếp qua Telegram (Direct Telegram Alert)**: Khi hết 15s đếm ngược hoặc bấm SOS thủ công, đồng hồ tự kết nối Wi-Fi gọi HTTPS Telegram Bot API bắn tin nhắn cảnh báo khẩn cấp tới **Group Chat Telegram của Gia đình** (`Gia đình là số 1` - Chat ID: `YOUR_TELEGRAM_CHAT_ID`) cho tất cả người thân nhận được cùng lúc.
+- **Gửi tin nhắn trực tiếp qua Telegram (Direct Telegram Alert)**: Khi hết 15s đếm ngược hoặc bấm SOS thủ công, đồng hồ tự kết nối Wi-Fi gọi HTTPS Telegram Bot API bắn tin nhắn cảnh báo khẩn cấp tới **Group Chat Telegram của Gia đình** (Chat ID cấu hình trong `include/secrets.h`) cho tất cả người thân nhận được cùng lúc.
 
 ---
 
@@ -215,13 +215,17 @@ Nút Vật lý BOOT          Cảm ứng: Nhấn giữ           Cảm ứng: Qu
 Đồng hồ kết nối Wi-Fi nhà và gọi trực tiếp HTTPS POST request tới Telegram Bot API:
 `POST https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/sendMessage`
 
-### Cấu hình File C++ (`include/app_config.h`):
+### Cấu hình Bí mật (`include/secrets.h` — **đã git-ignore, không bao giờ commit**):
 ```cpp
-#define WIFI_SSID           "WiFi_Nha_Ban"
-#define WIFI_PASSWORD       "Mat_Khau_WiFi"
-#define TELEGRAM_BOT_TOKEN  "YOUR_TELEGRAM_BOT_TOKEN" // Bot: @Gia_Dinh_bot (TroLiGiaDinh)
-#define TELEGRAM_CHAT_ID    "YOUR_TELEGRAM_CHAT_ID" // Chat ID Nhóm Telegram: "Gia đình là số 1"
+#define WIFI_SSID           "YOUR_WIFI_SSID"
+#define WIFI_PASSWORD       "YOUR_WIFI_PASSWORD"
+#define TELEGRAM_BOT_TOKEN  "YOUR_TELEGRAM_BOT_TOKEN"   // lấy từ @BotFather
+#define TELEGRAM_CHAT_ID    "YOUR_TELEGRAM_CHAT_ID"     // ID nhóm Telegram người thân
 ```
+
+> Sao chép `include/secrets.h.example` thành `include/secrets.h` rồi điền giá trị thật.
+> `include/app_config.h` chỉ `#include "secrets.h"` — bản thân nó không chứa bí mật nào
+> và vẫn được commit bình thường.
 
 ---
 
@@ -239,7 +243,7 @@ Dự án tích hợp bộ 2 mô hình Machine Learning **Lượng tử hóa INT8
    - **Tải từ**: Kaggle MIT-BIH Arrhythmia Database.
    - **Kích thước Model**: **~ 30 KB** Flash/RAM.
    - **Tốc độ Suy luận**: **1.0 ms** (nhờ tăng tốc SIMD `esp-dsp`).
-   - **Quy trình Kiểm định Kép 10 giây**: Khi phát hiện loạn nhịp tim (Arrhythmia) kéo dài quá 10 giây $\rightarrow$ Nhấp nháy viền vàng màn hình + Tự động gửi tin nhắn báo động về Group Telegram Gia đình (`YOUR_TELEGRAM_CHAT_ID`).
+   - **Quy trình Kiểm định Kép 10 giây**: Khi phát hiện loạn nhịp tim (Arrhythmia) kéo dài quá 10 giây $\rightarrow$ Nhấp nháy viền vàng màn hình + Tự động gửi tin nhắn báo động về Group Telegram Gia đình.
 
 ---
 
