@@ -12,6 +12,7 @@
 #include "sensors/cst816s_service.h"
 
 #include "fall_detection/fall_detector.h"
+#include "input/sos_button.h"
 #include "connectivity/wifi_manager.h"
 #include "connectivity/alert_dispatcher.h"
 #include "connectivity/ble_service.h"
@@ -115,6 +116,11 @@ void setup() {
     initWiFiManager();
     initBLEService();
 
+    // Deliberately the last line of setup(). GPIO 0 is a strapping pin and
+    // must not be driven or read until the boot-mode decision is long past --
+    // see SOS_BUTTON_PIN in app_config.h.
+    initSOSButton();
+
     Serial.println("\n>>> All Hardware & Health Watch Services Active <<<\n");
 }
 
@@ -130,6 +136,9 @@ void loop() {
         updateQMI8658Service();
         updateFallDetector();
         updateMAX30102Service();
+        // On the sensor tick rather than every pass: a single digitalRead is
+        // cheap, but 50 Hz already resolves a 1500 ms hold to within 2%.
+        updateSOSButton();
     }
 
     updateAlertDispatcher();

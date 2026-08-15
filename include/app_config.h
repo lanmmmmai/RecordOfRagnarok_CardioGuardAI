@@ -124,6 +124,22 @@
 #define PPG_MIN_SQI              20
 
 // ---------------------------------------------------------------------------
+// Physical SOS button
+// ---------------------------------------------------------------------------
+
+// The BOOT button, reused as SOS.
+//
+// ⚠️ GPIO 0 is a strapping pin: its level at reset decides whether the ESP32
+// enters download mode or runs the firmware. Do not pinMode() or read it until
+// setup() has finished -- touching it earlier interferes with that decision.
+#define SOS_BUTTON_PIN           0
+
+// How long the button must be held. Long enough that a knock against a
+// doorframe or a pocket cannot raise a false alarm, short enough that somebody
+// who has fallen does not have to keep holding while they wait.
+#define SOS_HOLD_MS              1500UL
+
+// ---------------------------------------------------------------------------
 // Fall detection, wrist-worn
 // ---------------------------------------------------------------------------
 // NONE OF THESE ARE CALIBRATED. They are the usual starting points for a
