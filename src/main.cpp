@@ -53,6 +53,54 @@ static unsigned long lastUptimeTick = 0;
 static unsigned long lastBatteryTick = 0;
 static unsigned long lastLogTick = 0;
 
+#if FALL_LOG_TICK_PROFILE
+// See FALL_LOG_TICK_PROFILE in app_config.h for why this exists and when to
+// delete it. Each entry keeps the largest single duration that job has cost
+// since the last report; the reporter prints them and zeroes them.
+struct JobPeak {
+    const char* name;
+    uint32_t peakUs;
+};
+static JobPeak jobPeaks[] = {
+    {"touch",  0},  // 0
+    {"poll",   0},  // 1
+    {"imu",    0},  // 2
+    {"fall",   0},  // 3
+    {"ppg",    0},  // 4
+    {"sos",    0},  // 5
+    {"alert",  0},  // 6
+    {"ble",    0},  // 7
+    {"sec",    0},  // 8  once-a-second block
+    {"bat",    0},  // 9  once-per-5s block
+    {"render", 0},  // 10
+    {"log",    0},  // 11
+};
+static uint32_t loopPeakUs = 0;
+
+// A macro rather than a function taking a callable: this wraps calls inside
+// the hot loop, and the timing must not cost more than what it measures.
+#define PROFILE_JOB(idx, call)                                      \
+    do {                                                            \
+        uint32_t _t0 = micros();                                    \
+        call;                                                       \
+        uint32_t _dt = micros() - _t0;                              \
+        if (_dt > jobPeaks[idx].peakUs) jobPeaks[idx].peakUs = _dt; \
+    } while (0)
+
+static void reportTickProfile() {
+    Serial.print("TICKPROF");
+    Serial.printf(",loop=%lu", (unsigned long)loopPeakUs);
+    for (auto& j : jobPeaks) {
+        Serial.printf(",%s=%lu", j.name, (unsigned long)j.peakUs);
+        j.peakUs = 0;
+    }
+    Serial.println();
+    loopPeakUs = 0;
+}
+#else
+#define PROFILE_JOB(idx, call) call
+#endif
+
 void printSerialLog() {
     Serial.println("==========================================================================");
     Serial.printf(" [WATCH LOG] %04d-%02d-%02d %02d:%02d:%02d | WiFi: %s (%s) | BLE: %s | BAT: %d%% (%.2fV, raw %lu mV)\n",
@@ -157,33 +205,45 @@ void setup() {
 void loop() {
     unsigned long now = millis();
 
+#if FALL_LOG_TICK_PROFILE
+    uint32_t loopT0 = micros();
+#endif
+
     // Touch is interrupt-gated and cheap, so it is serviced every pass to keep
     // the UI feeling immediate.
-    updateCST816SService();
+    PROFILE_JOB(0, updateCST816SService());
 
     // Every pass, because the IMU runs at 235 Hz and the tick at 50 Hz. The
     // call is a timestamp comparison until a new sensor sample is actually due,
     // so the cost of asking often is small and the peak of each tick gets found
     // no matter where in the loop the impact lands.
-    pollQMI8658Service();
+    PROFILE_JOB(1, pollQMI8658Service());
+
+    // True when the sensor work has already run this pass, which is what tells
+    // the render block below to stand aside.
+    bool sensorTickRan = false;
 
     if (now - lastSensorTick >= SENSOR_PERIOD_MS) {
         lastSensorTick = now;
-        updateQMI8658Service();
-        updateFallDetector();
-        updateMAX30102Service();
+        sensorTickRan = true;
+        PROFILE_JOB(2, updateQMI8658Service());
+        PROFILE_JOB(3, updateFallDetector());
+        PROFILE_JOB(4, updateMAX30102Service());
         // On the sensor tick rather than every pass: a single digitalRead is
         // cheap, but 50 Hz already resolves a 1500 ms hold to within 2%.
-        updateSOSButton();
+        PROFILE_JOB(5, updateSOSButton());
     }
 
-    updateAlertDispatcher();
-    updateBLEService();
+    PROFILE_JOB(6, updateAlertDispatcher());
+    PROFILE_JOB(7, updateBLEService());
 
     if (now - lastUptimeTick >= 1000) {
         lastUptimeTick = now;
         g_watchState.uptimeSec = now / 1000;
 
+#if FALL_LOG_TICK_PROFILE
+        uint32_t secT0 = micros();
+#endif
         // Once a second is plenty: the shortest thing it can react to is a
         // five-second sustained breach.
         updateVitalMonitor();
@@ -205,21 +265,64 @@ void loop() {
             g_watchState.minute = (sec / 60) % 60;
             g_watchState.second = sec % 60;
         }
+#if FALL_LOG_TICK_PROFILE
+        uint32_t secDt = micros() - secT0;
+        if (secDt > jobPeaks[8].peakUs) jobPeaks[8].peakUs = secDt;
+#endif
     }
 
     if (now - lastBatteryTick >= 5000) {
         lastBatteryTick = now;
+#if FALL_LOG_TICK_PROFILE
+        uint32_t batT0 = micros();
+#endif
         updateBatteryMonitor();
         updateWiFiManager();
+#if FALL_LOG_TICK_PROFILE
+        uint32_t batDt = micros() - batT0;
+        if (batDt > jobPeaks[9].peakUs) jobPeaks[9].peakUs = batDt;
+#endif
     }
 
-    if (now - lastRenderTick >= RENDER_PERIOD_MS) {
+    // Render only on a pass that did no sensor work. renderUI() ends in a
+    // blocking pushSprite of 240x240 at 16 bpp -- 115 kB down the SPI bus,
+    // measured at 31 ms, which is longer than the entire 20 ms tick it would
+    // otherwise share a pass with.
+    //
+    // Deferring by one pass costs nothing, because the loop runs far faster
+    // than either period: the next pass arrives within microseconds, still
+    // well inside the frame budget. What it buys is that the sensor tick is
+    // never queued behind a frame, so a fall impact cannot land in a 31 ms
+    // blind spot.
+    //
+    // Rate limiting stays: this decides *whether* a due frame may run now,
+    // not how often frames are due.
+    if (!sensorTickRan && now - lastRenderTick >= RENDER_PERIOD_MS) {
         lastRenderTick = now;
-        renderUI();
+        PROFILE_JOB(10, renderUI());
     }
 
-    if (now - lastLogTick >= 2000) {
+    // Same reasoning, and it matters more than it looks: printSerialLog() is a
+    // ~6 ms blocking write, and the worst ticks in the profile were the ones
+    // where it landed on the same pass as a frame.
+    if (!sensorTickRan && now - lastLogTick >= 2000) {
         lastLogTick = now;
-        printSerialLog();
+        PROFILE_JOB(11, printSerialLog());
     }
+
+#if FALL_LOG_TICK_PROFILE
+    // Measured before the report itself, so the printf below is excluded --
+    // it only runs on the tick that reports and would otherwise show up as a
+    // phantom spike in the very number being investigated.
+    uint32_t loopDt = micros() - loopT0;
+    if (loopDt > loopPeakUs) loopPeakUs = loopDt;
+
+    // Every 2 s, alongside the existing log rather than on its own timer, so
+    // the report costs one print per two seconds instead of one per loop.
+    static unsigned long lastProfileTick = 0;
+    if (now - lastProfileTick >= 2000) {
+        lastProfileTick = now;
+        reportTickProfile();
+    }
+#endif
 }

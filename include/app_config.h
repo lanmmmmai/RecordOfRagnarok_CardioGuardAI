@@ -300,6 +300,23 @@
 // the fall recordings are done.
 #define FALL_LOG_RAW_SAMPLES      1
 
+// Temporary instrumentation for the tick budget. Prints a TICKPROF line every
+// 2 s giving the worst single duration each job in loop() has cost since the
+// last report, in microseconds.
+//
+// It exists to answer one open question: after the IMU stopped blocking, the
+// tick median reached its 20 ms target but p95 stayed at 41 ms and max at 51 --
+// one tick in twenty taking twice as long, with the cause unknown. Render was
+// the obvious suspect and was ruled out by measurement, since that capture
+// already had frames at 10 FPS.
+//
+// Worst case rather than mean, because an average over a hundred ticks hides
+// exactly the rare stall being hunted.
+//
+// Set back to 0 once the answer is in. The timing calls are cheap but the
+// report is a blocking serial write, so it competes with what it measures.
+#define FALL_LOG_TICK_PROFILE     1
+
 // ---------------------------------------------------------------------------
 // Alerting
 // ---------------------------------------------------------------------------
