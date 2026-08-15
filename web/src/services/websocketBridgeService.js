@@ -1,40 +1,53 @@
-// WebSocket Bridge Service for ESP32-S3 SafeWatch Local Wi-Fi Telemetry (Strict Real Data Mode)
+// WebSocket Bridge Service with Zero-Click Background Auto-Connect
 
 class WebSocketBridgeService {
   constructor() {
     this.ws = null;
-    this.ip = '192.168.20.152';
+    const savedIP = typeof window !== 'undefined' ? localStorage.getItem('safewatch_ip') : null;
+    this.ip = savedIP && savedIP.trim() !== '' ? savedIP.trim() : '192.168.20.152';
     this.port = 8080;
     this.isConnected = false;
+    this.autoReconnect = true;
     this.reconnectTimer = null;
     this.telemetryListeners = new Set();
     this.fallAlertListeners = new Set();
     this.statusListeners = new Set();
     this.latestTelemetry = null;
+
+    // Start zero-click auto-connect immediately on load
+    if (typeof window !== 'undefined') {
+      setTimeout(() => {
+        this.connect();
+      }, 500);
+    }
   }
 
   setIP(ipAddress) {
     if (ipAddress && ipAddress.trim() !== '') {
       this.ip = ipAddress.trim();
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('safewatch_ip', this.ip);
+      }
     }
   }
 
   connect(customIP) {
     if (customIP) this.setIP(customIP);
 
-    this.disconnect(false);
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
 
     const wsUrl = `ws://${this.ip}:${this.port}`;
-    console.log(`[WebSocket Bridge] Connecting to ${wsUrl}...`);
-    this.notifyStatus('CONNECTING', `Đang kết nối Wi-Fi Local: ${wsUrl}`);
+    this.notifyStatus('CONNECTING', `Đang tự động kết nối SafeWatch (${this.ip})...`);
 
     try {
       this.ws = new WebSocket(wsUrl);
 
       this.ws.onopen = () => {
-        console.log(`[WebSocket Bridge] Connected successfully to ${wsUrl}`);
+        console.log(`[WebSocket Bridge] 🟢 Auto-Connected successfully to ${wsUrl}`);
         this.isConnected = true;
-        this.notifyStatus('CONNECTED', `Đã kết nối Wi-Fi Local với SafeWatch (${this.ip})`);
+        this.notifyStatus('CONNECTED', `Đã tự động kết nối SafeWatch (${this.ip})`);
         
         if (this.reconnectTimer) {
           clearTimeout(this.reconnectTimer);
@@ -52,22 +65,34 @@ class WebSocketBridgeService {
       };
 
       this.ws.onerror = (err) => {
-        console.error('[WebSocket Bridge] Error:', err);
-        this.notifyStatus('ERROR', `Lỗi kết nối Wi-Fi (${wsUrl})`);
+        this.isConnected = false;
       };
 
       this.ws.onclose = (event) => {
-        console.log('[WebSocket Bridge] Connection closed');
         this.isConnected = false;
-        this.notifyStatus('DISCONNECTED', `Mất kết nối Wi-Fi với SafeWatch (${this.ip})`);
+        this.notifyStatus('DISCONNECTED', `Đang tự động dò tìm đồng hồ SafeWatch (${this.ip})...`);
+        
+        // Auto-reconnect daemon (silent background retry every 2.5s)
+        if (this.autoReconnect && !this.reconnectTimer) {
+          this.reconnectTimer = setTimeout(() => {
+            this.reconnectTimer = null;
+            this.connect();
+          }, 2500);
+        }
       };
     } catch (err) {
-      console.error('[WebSocket Bridge] Exception during connection:', err);
-      this.notifyStatus('ERROR', `Khởi tạo kết nối thất bại`);
+      this.isConnected = false;
+      if (this.autoReconnect && !this.reconnectTimer) {
+        this.reconnectTimer = setTimeout(() => {
+          this.reconnectTimer = null;
+          this.connect();
+        }, 2500);
+      }
     }
   }
 
   disconnect(manual = true) {
+    this.autoReconnect = !manual;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -79,7 +104,7 @@ class WebSocketBridgeService {
     this.isConnected = false;
     this.latestTelemetry = null;
     if (manual) {
-      this.notifyStatus('DISCONNECTED', 'Đã ngắt kết nối Wi-Fi');
+      this.notifyStatus('DISCONNECTED', 'Đã ngắt kết nối');
     }
   }
 
@@ -87,7 +112,6 @@ class WebSocketBridgeService {
     if (!data) return;
 
     if (data.type === 'telemetry' || data.pulse !== undefined) {
-      // 100% Raw Data Direct from Watch (Zero Invention / Zero Mocking)
       const telemetry = {
         pulse: data.pulse,
         spo2: data.spo2,
