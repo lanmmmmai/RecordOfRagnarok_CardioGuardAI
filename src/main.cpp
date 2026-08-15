@@ -90,7 +90,14 @@ void printSerialLog() {
 }
 
 void setup() {
-    Serial.begin(115200);
+    // 921600 rather than the usual 115200 because the fall-detection CSV log
+    // is written from inside the 20 ms sensor tick and Serial.printf blocks
+    // until the bytes are out. A measured session at 115200 ran the loop at
+    // 48 ms per tick -- the IMU was configured for 235 Hz and sampled four
+    // times a tick, then sat idle for 43 ms, so the effective rate was 21 Hz
+    // and a floor impact landed in one or two samples. The link speed was the
+    // whole of the difference; the same figure already works for uploads.
+    Serial.begin(921600);
     delay(1000);
 
     Serial.println("==========================================================================");
