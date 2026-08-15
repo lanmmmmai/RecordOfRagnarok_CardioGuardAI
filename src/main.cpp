@@ -284,28 +284,45 @@ void loop() {
 #endif
     }
 
-    // Render only on a pass that did no sensor work. renderUI() ends in a
-    // blocking pushSprite of 240x240 at 16 bpp -- 115 kB down the SPI bus,
-    // measured at 31 ms, which is longer than the entire 20 ms tick it would
-    // otherwise share a pass with.
+    // No frames at all while raw logging is on.
     //
-    // Deferring by one pass costs nothing, because the loop runs far faster
-    // than either period: the next pass arrives within microseconds, still
-    // well inside the frame budget. What it buys is that the sensor tick is
-    // never queued behind a frame, so a fall impact cannot land in a 31 ms
-    // blind spot.
+    // renderUI() ends in a blocking pushSprite of 240x240 at 16 bpp -- 115 kB
+    // down the SPI bus, measured at 31 ms. On a single thread that is 31 ms
+    // during which millis() keeps running and the next sensor tick, due at
+    // 20 ms, simply waits. Gating it behind sensorTickRan below only changed
+    // which pass paid the cost, not that it was paid: measured p95 went 41 ms
+    // to 40 ms. The only ways out are a frame that does not block the CPU
+    // (DMA), a smaller frame (dirty rectangles), or no frame.
     //
-    // Rate limiting stays: this decides *whether* a due frame may run now,
-    // not how often frames are due.
+    // While capturing, no frame is the honest choice. The wearer is falling
+    // onto a mattress on purpose and is not reading the watch; the capture is
+    // the product. #if rather than a runtime check so the call is not in the
+    // binary at all.
+    //
+    // The screen comes back when FALL_LOG_RAW_SAMPLES returns to 0 -- the same
+    // switch that ends the capture -- after a rebuild and flash. Note that the
+    // fall-alert screen and its 15 s cancel button are also gone while this is
+    // on, so a genuine fall will send its Telegram message with no way to
+    // cancel from the wrist.
+#if !FALL_LOG_RAW_SAMPLES
     if (!sensorTickRan && now - lastRenderTick >= RENDER_PERIOD_MS) {
         lastRenderTick = now;
         PROFILE_JOB(10, renderUI());
     }
+#endif
 
-    // Same reasoning, and it matters more than it looks: printSerialLog() is a
-    // ~6 ms blocking write, and the worst ticks in the profile were the ones
-    // where it landed on the same pass as a frame.
-    if (!sensorTickRan && now - lastLogTick >= 2000) {
+    // printSerialLog() is a ~6 ms blocking write, so with frames gone it is the
+    // largest remaining stall. It stays, because it is how the wearer and the
+    // person watching the terminal can tell the device is alive during a
+    // capture, but at a quarter of the rate: one 6 ms stall every 8 s costs
+    // 0.08% of ticks instead of 0.3%, and the status it reports changes slowly
+    // enough that 8 s is still useful.
+#if FALL_LOG_RAW_SAMPLES
+    const unsigned long LOG_PERIOD_MS = 8000;
+#else
+    const unsigned long LOG_PERIOD_MS = 2000;
+#endif
+    if (!sensorTickRan && now - lastLogTick >= LOG_PERIOD_MS) {
         lastLogTick = now;
         PROFILE_JOB(11, printSerialLog());
     }
