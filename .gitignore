@@ -38,3 +38,8 @@ ai_models/**/*.csv
 __pycache__/
 *.pyc
 .ipynb_checkpoints/
+
+# Local raw log collection files
+log_am_*.txt
+*.log
+log_*.txt
