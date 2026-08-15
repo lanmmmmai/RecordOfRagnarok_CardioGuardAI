@@ -295,8 +295,45 @@ void updateAlertDispatcher() {
                  g_watchState.spo2Valid ? (String(g_watchState.spo2Percent) + "%").c_str() : "Không đo được",
                  g_watchState.batteryPercent);
 
+#if FALL_LOG_RAW_SAMPLES
+        // Capture sessions do not message anyone.
+        //
+        // While raw logging is on the display is compiled out entirely, and
+        // that includes the fall-alert screen and its 15 s cancel button -- so
+        // a deliberate fall onto a mattress would send a real emergency
+        // message to the wearer's family with no way to stop it from the
+        // wrist. Every fall in a capture session is on purpose, so the right
+        // number of messages to send is zero.
+        //
+        // Blocked here, before storePush, rather than at the transport: the
+        // dispatcher persists to NVS and retries, so a message queued now
+        // would still go out later when logging is switched back off. Nothing
+        // is queued means nothing is retried.
+        //
+        // Detection itself is untouched -- state machine, phases, the decision
+        // line, the CSV. Suppressing the send does not alter the data being
+        // collected, which is the whole point of the session.
+        //
+        // Straight back to NORMAL rather than through SENT. SENT would park the
+        // watch for ALERT_SENT_AUTO_CLEAR_MS, five minutes, and
+        // updateFallDetector() only looks for impacts while the state is
+        // NORMAL -- so every recorded fall would blind the device to the next
+        // one for five minutes. Ten drops would take fifty minutes of waiting,
+        // and any fall landing inside a window would be missing from the
+        // capture with nothing in the file to say why.
+        fallQueued = false;
+        fallDispatch = DISPATCH_IDLE;
+        g_watchState.fallDetected = false;
+        g_watchState.fallState = FALL_STATE_NORMAL;
+        g_watchState.countdownSec = 15;
+        Serial.println(" [ALERT] Fall alert SUPPRESSED (capture session; "
+                       "FALL_LOG_RAW_SAMPLES=1). Nothing sent, nothing queued, "
+                       "detector re-armed.");
+        return;
+#else
         storePush(msg);
         Serial.println(" [ALERT] Fall alert handed to dispatcher.");
+#endif
     }
 
     if (fallDispatch == DISPATCH_DELIVERED) {
