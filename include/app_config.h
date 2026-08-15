@@ -25,6 +25,30 @@
 #define TOUCH_RST_PIN     13
 #define TOUCH_INT_PIN      5
 
+// Minimum time between two accepted navigations, in milliseconds.
+//
+// This is a second gate, not a replacement for the per-contact latch in
+// cst816s_service.cpp. That latch already guarantees one navigation per touch,
+// so it is not what lets a single swipe run away. What it cannot see is one
+// physical swipe that the controller splits into two contacts: a finger
+// dragging across the glass momentarily lightens, points drops to 0, and the
+// re-press is a new contact by every test the latch has. Two screens from one
+// swipe, and the wearer's hand never left the glass.
+//
+// 350 ms is chosen from the two intervals it sits between. A deliberate
+// repeat -- swipe, lift, swipe again to walk the carousel -- takes an
+// unhurried wearer well over half a second, so nothing intentional is
+// swallowed. A split contact re-presses within a few tens of milliseconds,
+// since it is one continuous movement. The gap between those two is wide, and
+// 350 ms sits in it rather than close to either edge, so neither a slightly
+// faster wearer nor a slightly slower split lands on the wrong side.
+//
+// Raising this makes the UI feel heavier and eventually starts dropping real
+// swipes; the first sign is a wearer swiping twice on purpose and arriving one
+// screen short, which is the failure this whole path already had once and is
+// worth not reintroducing from the other direction.
+#define TOUCH_GESTURE_MIN_GAP_MS  350
+
 // Display Backlight
 #define LCD_BL_PIN         2
 

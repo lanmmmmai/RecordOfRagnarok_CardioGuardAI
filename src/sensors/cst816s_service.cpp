@@ -14,6 +14,11 @@ static volatile bool cstTouchPending = false;
 // per-contact and not per-gesture-code.
 static bool gestureHandledThisContact = false;
 
+// When the last navigation was accepted, for the TOUCH_GESTURE_MIN_GAP_MS
+// interval gate. Starts at 0 rather than millis(), so the first gesture after
+// boot is accepted immediately instead of waiting out a gap it never had.
+static unsigned long lastGestureMs = 0;
+
 void IRAM_ATTR cst816s_isr() {
     cstTouchPending = true;
 }
@@ -106,11 +111,41 @@ void updateCST816SService() {
             g_watchState.gestureName = getGestureNameStr(gesture);
             g_watchState.touched = true;
 
+            // Both gates, in this order. The latch stops a held finger from
+            // repeating; the interval stops one physical swipe that the
+            // controller split into two contacts from counting twice. Neither
+            // subsumes the other -- the latch cannot see across a lift, and the
+            // interval alone would let a resting finger through the moment it
+            // expires.
             if (!gestureHandledThisContact) {
-                gestureHandledThisContact = true;
-                Serial.printf(" [TOUCH] Gesture: 0x%02X (%s) | X: %d, Y: %d\n",
-                              gesture, g_watchState.gestureName.c_str(), x, y);
-                handleUITouchInput(x, y, gesture);
+                unsigned long now = millis();
+
+                // The fall alert is exempt from the interval. Everywhere else a
+                // swallowed gesture costs the wearer a repeat; there it can
+                // cost them a false alarm sent to their family while they lie
+                // on the floor trying to stop it. The per-contact latch still
+                // applies, so a resting finger cannot spam it -- what is given
+                // up is only the protection against a split contact, and
+                // cancelling twice is harmless: the second cancel finds nothing
+                // to cancel.
+                bool exempt = (g_watchState.currentScreen == SCREEN_FALL_ALERT);
+
+                if (exempt || now - lastGestureMs >= TOUCH_GESTURE_MIN_GAP_MS) {
+                    lastGestureMs = now;
+                    gestureHandledThisContact = true;
+                    Serial.printf(" [TOUCH] Gesture: 0x%02X (%s) | X: %d, Y: %d\n",
+                                  gesture, g_watchState.gestureName.c_str(), x, y);
+                    handleUITouchInput(x, y, gesture);
+                } else {
+                    // Inside the interval. Latch it anyway: this contact has
+                    // had its answer, and it was no. Without this the same
+                    // contact keeps re-testing the clock every poll and fires
+                    // the instant the gap expires, turning a rejected gesture
+                    // into a delayed one.
+                    gestureHandledThisContact = true;
+                    Serial.printf(" [TOUCH] Gesture 0x%02X ignored (%lu ms since last)\n",
+                                  gesture, now - lastGestureMs);
+                }
             }
         } else if (points > 0) {
             // Finger down but the controller has not decided on a gesture yet.
