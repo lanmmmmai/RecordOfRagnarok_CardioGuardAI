@@ -251,8 +251,26 @@
 // settle, so nothing in the first FALL_SETTLE_MS counts.
 #define FALL_SETTLE_MS            400UL
 
-// Phase 3 -- largest allowed |totalG - 1g| once settled.
+// Phase 3 -- how far from 1g a single settled sample may sit and still count
+// as calm.
 #define FALL_STILLNESS_MAX_DEV_G  0.35f
+
+// Phase 3 -- what fraction of the settled samples must be calm for the wearer
+// to count as lying still.
+//
+// The test used to be on the worst single sample: one reading over the limit
+// anywhere in 2.6 seconds dismissed the alert. That asks somebody who has just
+// hit the floor to lie perfectly still, and a conscious person does the
+// opposite -- pushes up on an elbow, rolls over, reaches for something to pull
+// against. All of it happens at the wrist. The old rule therefore grew more
+// certain to stay silent the harder the wearer tried to help themselves.
+//
+// A ratio keeps the meaning (mostly motionless, not walking around) while
+// tolerating the two or three seconds of trying to get up. 0.70 is a starting
+// point, not a measurement: it says roughly two thirds of the window must be
+// quiet. The confirmation log prints calm/total on every event, so a session
+// of real falls gives the number to replace it with.
+#define FALL_STILLNESS_MIN_CALM_RATIO  0.70f
 
 // Phase 4 -- posture must actually have changed, in degrees between the
 // gravity direction before the event and after it.
@@ -279,7 +297,9 @@
 // writes. Turn it on for dedicated collection sessions, and turn it back off
 // afterwards. Lines are prefixed FALLCSV; the columns are
 //   millis, accX, accY, accZ, gyroX, gyroY, gyroZ, totalG, fallState
-#define FALL_LOG_RAW_SAMPLES      0
+// Currently ON: a data-collection session is in progress. Set back to 0 once
+// the fall recordings are done.
+#define FALL_LOG_RAW_SAMPLES      1
 
 // ---------------------------------------------------------------------------
 // Alerting

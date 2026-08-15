@@ -15,9 +15,14 @@ static unsigned long freeFallTimestamp = 0;
 static float gravX = 0.0f, gravY = 0.0f, gravZ = 1.0f;
 static float preFallX = 0.0f, preFallY = 0.0f, preFallZ = 1.0f;
 
-// Confirmation-window accumulators.
+// Confirmation-window accumulators. stillSamples counts every sample judged
+// after the settle delay; calmSamples counts the subset that stayed near 1g.
+// The ratio between them is the stillness verdict; confirmMaxDev survives only
+// so the old worst-sample rule can still be printed for comparison.
 static unsigned long confirmStart = 0;
 static float confirmMaxDev = 0.0f;
+static uint16_t stillSamples = 0;
+static uint16_t calmSamples = 0;
 
 // Which of the two entry paths brought us into FALL_STATE_SUSPECTED, and how
 // hard the impact was. Reported on the decision line so a dismissed event can
@@ -65,6 +70,8 @@ void cancelFallAlert() {
     g_watchState.currentScreen = SCREEN_HOME;
     freeFallDetected = false;
     confirmStart = 0;
+    stillSamples = 0;
+    calmSamples = 0;
     // Clear the dispatcher too, or a half-finished send leaves state behind
     // that would corrupt the next alert.
     resetAlertDispatcher();
@@ -79,6 +86,8 @@ void updateFallDetector() {
     if (!g_watchState.imuOk) {
         freeFallDetected = false;
         confirmStart = 0;
+        stillSamples = 0;
+        calmSamples = 0;
         return;
     }
 
@@ -153,6 +162,8 @@ void updateFallDetector() {
             g_watchState.fallState = FALL_STATE_SUSPECTED;
             confirmStart = now;
             confirmMaxDev = 0.0f;
+            stillSamples = 0;
+            calmSamples = 0;
             peakImpactG = totalG;
             entryPathName = entryPath;
             Serial.printf(" -> [FALL] Impact %.2fg via %s. Confirming for %lu ms...\n",
@@ -183,24 +194,41 @@ void updateFallDetector() {
 
         if (totalG > peakImpactG) peakImpactG = totalG;
 
-        // Phase 3: the wearer should be lying still. Track the worst deviation
-        // from 1g; a clap or a slammed hand keeps moving and blows past the
-        // threshold.
+        // Phase 3: the wearer should be lying still -- but "still" has to mean
+        // mostly still, not perfectly still.
         //
-        // Nothing in the first FALL_SETTLE_MS counts. The impact itself, the
-        // wrist rebounding off the floor and the arm coming to rest all land
-        // inside that window, and at a 20 ms sample period they are several
-        // samples wide. Measuring from the impact sample -- as this did before
-        // -- meant one rebound sample pinned confirmMaxDev above the limit and
-        // the alert was thrown away. It got worse the harder the fall was.
+        // Nothing in the first FALL_SETTLE_MS counts either way. The impact,
+        // the wrist rebounding off the floor and the arm coming to rest all
+        // land inside that window and would otherwise be read as movement.
+        //
+        // After that, count how many samples are calm rather than tracking the
+        // single worst one. The worst-sample test asked the wearer to hold
+        // still for 2.6 seconds and threw the alert away on one twitch -- and
+        // someone who has just fallen and is still conscious does not hold
+        // still. They push up on an elbow, roll, reach for something to grab.
+        // The wrist is where all of that shows up. Judging on the peak meant
+        // the more the wearer tried to help themselves, the more certainly the
+        // watch said nothing, which is the wrong way round for the person this
+        // is built for.
+        //
+        // confirmMaxDev is still tracked, but only to be printed: it is what
+        // the old rule would have decided on, so a calibration session can be
+        // read both ways from one log.
         if (elapsed >= FALL_SETTLE_MS) {
             float dev = fabsf(totalG - 1.0f);
             if (dev > confirmMaxDev) confirmMaxDev = dev;
+            stillSamples++;
+            if (dev < FALL_STILLNESS_MAX_DEV_G) calmSamples++;
         }
 
         if (elapsed < FALL_CONFIRM_WINDOW_MS) return;
 
-        bool still = confirmMaxDev < FALL_STILLNESS_MAX_DEV_G;
+        // A window with no samples in it cannot testify either way; treat it as
+        // not still rather than dividing by zero.
+        float calmRatio = (stillSamples > 0)
+                              ? (float)calmSamples / (float)stillSamples
+                              : 0.0f;
+        bool still = calmRatio >= FALL_STILLNESS_MIN_CALM_RATIO;
 
         // Phase 4: posture must actually have changed. Angle between the
         // gravity vector before the event and the one after it.
@@ -217,11 +245,20 @@ void updateFallDetector() {
         // threshold it was compared against. This is what you calibrate the
         // constants in app_config.h from: drop the watch, read the line, see
         // which test failed and by how much.
-        Serial.printf(" -> [FALL] path=%s peak=%.2fg stillDev=%.2f/%.2f%s "
-                      "tilt=%.0f/%.0f deg%s => %s\n",
+        //
+        // peakDev is printed alongside, marked with what the old worst-sample
+        // rule would have concluded. It decides nothing now, but it lets one
+        // calibration session be scored under both rules, which is the only
+        // honest way to claim the change was an improvement.
+        bool oldRuleStill = confirmMaxDev < FALL_STILLNESS_MAX_DEV_G;
+        Serial.printf(" -> [FALL] path=%s peak=%.2fg calm=%u/%u=%.0f%%/%.0f%%%s "
+                      "peakDev=%.2f(old:%s) tilt=%.0f/%.0f deg%s => %s\n",
                       entryPathName,
                       peakImpactG,
-                      confirmMaxDev, FALL_STILLNESS_MAX_DEV_G, still ? " OK" : " FAIL",
+                      calmSamples, stillSamples,
+                      calmRatio * 100.0f, FALL_STILLNESS_MIN_CALM_RATIO * 100.0f,
+                      still ? " OK" : " FAIL",
+                      confirmMaxDev, oldRuleStill ? "OK" : "FAIL",
                       angleDeg, FALL_ORIENTATION_MIN_DEG, reoriented ? " OK" : " FAIL",
                       (still && reoriented) ? "FALL CONFIRMED" : "dismissed");
 
