@@ -93,13 +93,13 @@
 // sensor reads 123,000-151,000. An order of magnitude apart, so 25,000 sits
 // comfortably in the gap and is now backed by a reading rather than a bench
 // guess.
-#define PPG_CONTACT_IR_THRESHOLD 25000UL
+#define PPG_CONTACT_IR_THRESHOLD 18000UL
 
 // Contact is harder to lose than to gain. Once the finger is on, IR has to fall
 // well below the acquire threshold before contact is doubted -- pressing a
 // finger down is never perfectly steady, and the pulsatile component alone
 // swings the reading by a few percent every beat.
-#define PPG_CONTACT_IR_RELEASE   18000UL
+#define PPG_CONTACT_IR_RELEASE   15000UL
 
 // How many consecutive sub-threshold samples mean the finger really left, as
 // opposed to a twitch. 100 samples at 200 Hz is half a second.

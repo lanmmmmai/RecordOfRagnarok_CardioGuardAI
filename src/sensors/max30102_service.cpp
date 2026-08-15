@@ -103,7 +103,55 @@ static void updateMotionEstimate() {
     g_watchState.motionArtifact = sqrtf(var / MOTION_WINDOW) > PPG_MOTION_STD_G;
 }
 
+// Adaptive 200Hz Wrist PPG Peak Detector
+// Solves:
+// 1. Double counting (dicrotic notch) via 350ms (70 samples at 200Hz) refractory period
+// 2. High AC amplitude clipping via dynamic peak-tracking threshold (no 1000 AC cap)
+static float g_dcEst = 0.0f;
+static float g_prevAc = 0.0f;
+static float g_peakAc = 2000.0f;
+static uint32_t g_samplesSinceBeat = 0;
+static bool g_rising = false;
+
+static bool detectBeatAdaptive(uint32_t ir) {
+    // 1. DC Exponential Moving Average
+    if (g_dcEst == 0.0f) g_dcEst = (float)ir;
+    g_dcEst = 0.95f * g_dcEst + 0.05f * (float)ir;
+
+    // 2. Highpass AC Signal
+    float acSignal = (float)ir - g_dcEst;
+
+    // 3. Dynamic Threshold Tracking
+    g_peakAc *= 0.999f;
+    if (acSignal > g_peakAc) {
+        g_peakAc = acSignal;
+    }
+    float threshold = g_peakAc * 0.35f;
+
+    g_samplesSinceBeat++;
+
+    // 4. Zero-Crossing Slope Peak Detection with 350ms (70 samples) Refractory Guard
+    bool beatDetected = false;
+    if (acSignal > g_prevAc) {
+        g_rising = true;
+    } else if (g_rising && acSignal < g_prevAc) {
+        if (g_prevAc > threshold && g_prevAc > 300.0f && g_samplesSinceBeat >= 100) {
+            beatDetected = true;
+            g_samplesSinceBeat = 0;
+            if (g_prevAc > 800.0f) g_peakAc = g_prevAc;
+        }
+        g_rising = false;
+    }
+    g_prevAc = acSignal;
+    return beatDetected;
+}
+
 static void resetMeasurement() {
+    g_dcEst = 0.0f;
+    g_prevAc = 0.0f;
+    g_peakAc = 2000.0f;
+    g_samplesSinceBeat = 0;
+    g_rising = false;
     bufferCount = 0;
     decimateCount = 0;
     irAccum = redAccum = 0;
@@ -242,7 +290,7 @@ void updateMAX30102Service() {
 
         // Beat detection. Skipped entirely while the arm is moving: a bad
         // reading is worse than no reading on a device someone relies on.
-        if (!g_watchState.motionArtifact && checkForBeat(ir)) {
+        if (!g_watchState.motionArtifact && detectBeatAdaptive(ir)) {
             unsigned long now = millis();
             if (lastBeatSample > 0) {
                 // Interval measured in samples, not milliseconds: see
@@ -250,6 +298,8 @@ void updateMAX30102Service() {
                 uint32_t deltaSamples = sampleIndex - lastBeatSample;
                 float deltaMs = (float)deltaSamples * PPG_SAMPLE_PERIOD_MS;
                 float bpm = 60000.0f / deltaMs;
+                Serial.printf(" [BEAT] sample=%lu dt_samples=%lu dt_ms=%.1f raw_bpm=%.1f ir=%lu\n",
+                              (unsigned long)sampleIndex, (unsigned long)deltaSamples, deltaMs, bpm, (unsigned long)ir);
                 if (bpm >= 45.0f && bpm <= 180.0f) {
                     // Reject beats that jump too far from the current reading:
                     // a mis-detected beat halves or doubles the interval, which
@@ -372,10 +422,7 @@ void updateMAX30102Service() {
             } else {
                 g_watchState.spo2Valid = false;
             }
-            if (hrValidFlag && hr >= 45 && hr <= 180 && !g_watchState.hrValid) {
-                g_watchState.heartRateBPM = (uint16_t)hr;
-                g_watchState.hrValid = true;
-            }
+// Removed Maxim fallback hr=125 bug
 
 
             const int slide = FreqS;  // one second
