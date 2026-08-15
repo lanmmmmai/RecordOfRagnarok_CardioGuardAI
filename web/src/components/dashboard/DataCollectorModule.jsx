@@ -12,7 +12,7 @@ export default function DataCollectorModule({ isConnected, rawTelemetry }) {
   const [sessionTags, setSessionTags] = useState([]);
   const [sessionData, setSessionData] = useState([]);
 
-  const isWorn = Boolean(isConnected && rawTelemetry?.skinContact);
+  const isWorn = Boolean(isConnected && rawTelemetry?.skinContact && (!rawTelemetry?.raw || rawTelemetry?.raw?.ir > 20000));
 
   // Timer for active recording duration ONLY while wearing the watch
   useEffect(() => {
@@ -45,7 +45,7 @@ export default function DataCollectorModule({ isConnected, rawTelemetry }) {
 
   useEffect(() => {
     if (!isConnected || !rawTelemetry || !isRecording) return;
-    if (!rawTelemetry.skinContact) return;
+    if (!rawTelemetry.skinContact || (rawTelemetry.raw && rawTelemetry.raw.ir < 20000)) return;
 
     setSamplesCount(prev => prev + 1);
 
