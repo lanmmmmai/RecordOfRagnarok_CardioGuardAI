@@ -15,6 +15,56 @@ static unsigned long freeFallTimestamp = 0;
 static float gravX = 0.0f, gravY = 0.0f, gravZ = 1.0f;
 static float preFallX = 0.0f, preFallY = 0.0f, preFallZ = 1.0f;
 
+// Delay line holding where gravity pointed roughly FALL_PREFALL_DELAY_MS ago.
+//
+// Path B has no free-fall phase, so there is no earlier moment at which to
+// snapshot the pre-fall posture -- by the time the impact is seen, the fall has
+// already happened. It used to snapshot the live gravity estimate on the impact
+// sample, which is a posture already partway down.
+//
+// The size of that error is smaller than it first appears. This function runs
+// on the 20 ms sensor tick, not at the 235 Hz the IMU is sampled at, so the
+// 0.98/0.02 low-pass above has a time constant of 1/(50*0.02) = 1.0 s. A
+// 400-800 ms fall moves it by about a third to a half -- enough to bias the
+// phase-4 angle toward zero, not enough to erase it.
+//
+// The ring answers the question the snapshot was only approximating: where was
+// up, before this started.
+static float preRingX[FALL_PREFALL_RING_LEN];
+static float preRingY[FALL_PREFALL_RING_LEN];
+static float preRingZ[FALL_PREFALL_RING_LEN];
+static unsigned long preRingMs[FALL_PREFALL_RING_LEN];
+static uint16_t preRingPos = 0;
+static bool preRingFilled = false;
+
+// Walks back from the newest entry until one is at least
+// FALL_PREFALL_DELAY_MS old, and returns it.
+//
+// Indexing by timestamp rather than by a fixed number of entries matters here
+// because the tick is not a fixed length: rendering shares this thread, and a
+// measured capture showed the sensor tick settling at ~48 ms with a frame in
+// flight against its nominal 20 ms. Counting entries would make the lookback
+// however long the last N ticks happened to take -- 1.3 s or 3.1 s for the same
+// 64 entries -- which is not a delay line so much as a guess. Searching by age
+// gives FALL_PREFALL_DELAY_MS whatever the tick rate does, and makes that
+// constant load-bearing instead of decorative.
+//
+// Returns false when no entry is old enough yet, which is the first
+// FALL_PREFALL_DELAY_MS after boot or after an IMU outage.
+static bool readPreFallPosture(unsigned long now, float* px, float* py, float* pz) {
+    uint16_t n = preRingFilled ? FALL_PREFALL_RING_LEN : preRingPos;
+    for (uint16_t back = 1; back <= n; back++) {
+        uint16_t idx = (preRingPos + FALL_PREFALL_RING_LEN - back) % FALL_PREFALL_RING_LEN;
+        if (now - preRingMs[idx] >= FALL_PREFALL_DELAY_MS) {
+            *px = preRingX[idx];
+            *py = preRingY[idx];
+            *pz = preRingZ[idx];
+            return true;
+        }
+    }
+    return false;
+}
+
 // Confirmation-window accumulators. stillSamples counts every sample judged
 // after the settle delay; calmSamples counts the subset that stayed near 1g.
 // The ratio between them is the stillness verdict; confirmMaxDev survives only
@@ -88,6 +138,14 @@ void updateFallDetector() {
         confirmStart = 0;
         stillSamples = 0;
         calmSamples = 0;
+        // Entries from before the outage describe a posture separated from the
+        // present by however long the IMU was down. The age search would still
+        // accept them -- they are old enough, which is exactly the problem, and
+        // the older they are the more readily they pass. Discarding sends the
+        // next impact down the live-estimate fallback until FALL_PREFALL_DELAY_MS
+        // of post-recovery samples exist again.
+        preRingFilled = false;
+        preRingPos = 0;
         return;
     }
 
@@ -102,6 +160,14 @@ void updateFallDetector() {
     gravZ = gravZ * 0.98f + az * 0.02f;
 
     unsigned long now = millis();
+
+    // Record the estimate with its timestamp, before anything reads it.
+    preRingX[preRingPos] = gravX;
+    preRingY[preRingPos] = gravY;
+    preRingZ[preRingPos] = gravZ;
+    preRingMs[preRingPos] = now;
+    preRingPos = (preRingPos + 1) % FALL_PREFALL_RING_LEN;
+    if (preRingPos == 0) preRingFilled = true;
 
 #if FALL_LOG_RAW_SAMPLES
     // Every sample, every tick, whatever the state -- this is the training set.
@@ -125,13 +191,29 @@ void updateFallDetector() {
 
     if (g_watchState.fallState == FALL_STATE_NORMAL) {
         // Two ways into the confirmation phase. Path A is the classic
-        // free-fall-then-impact signature. Path B exists because insisting on
-        // free fall silently misses the falls that matter most -- a slump, a
-        // slide down a wall, fainting from a chair -- where the wrist never
-        // becomes unsupported. Path B compensates with a higher impact bar.
+        // free-fall-then-impact signature. Path B was written for the falls
+        // where the wrist never becomes unsupported -- a slump, a slide down a
+        // wall, fainting from a chair -- and compensates with a higher impact
+        // bar.
+        //
+        // Path B does not actually reach those yet. All 13 recorded falls dip
+        // into free fall (min_g <= 0.82g, most below 0.4g), so they enter by
+        // path A and path B has never been the deciding path for a measured
+        // fall. A genuinely slow collapse produces no impact large enough for
+        // its 3.5g bar either. See FALL_IMPACT_STANDALONE_G for why the gap is
+        // left open rather than closed with invented thresholds.
         const char* entryPath = nullptr;
 
         // Phase 1: free fall.
+        //
+        // This snapshot stays on the live estimate rather than the delay line.
+        // Path A has a real earlier event to snapshot on -- the onset of free
+        // fall, before the impact -- so the estimate here has not yet followed
+        // the body down the way path B's had. It is not perfect: balance is
+        // lost before the wrist goes weightless. But the ring would change the
+        // behaviour of the path that the 13 recorded falls were measured
+        // through, and the fix it would buy is much smaller than path B's.
+        // Left alone deliberately, to be judged against the same capture.
         if (totalG < FALL_FREEFALL_G && !freeFallDetected) {
             freeFallDetected = true;
             freeFallTimestamp = now;
@@ -150,11 +232,19 @@ void updateFallDetector() {
 
         // Phase 2, path B: a hard impact on its own.
         if (entryPath == nullptr && totalG > FALL_IMPACT_STANDALONE_G) {
-            // No free fall means no earlier snapshot of which way was up, so
-            // take one now. The gravity estimate is low-passed with a time
-            // constant near a second, so a single impact sample has barely
-            // moved it and it still describes the pre-impact posture.
-            preFallX = gravX; preFallY = gravY; preFallZ = gravZ;
+            // No free fall means no earlier event to snapshot on, so read the
+            // posture out of the delay line: an estimate from
+            // FALL_PREFALL_DELAY_MS ago, before the fall began.
+            //
+            // When nothing is old enough yet -- the first 600 ms after boot or
+            // after an IMU outage -- fall back to the live estimate, which is
+            // what the old code always used. Left as a documented fallback
+            // rather than suppressed: refusing to enter confirmation for the
+            // first moments after boot would trade an approximate tilt angle
+            // for a missed fall, and the tilt check is disabled anyway.
+            if (!readPreFallPosture(now, &preFallX, &preFallY, &preFallZ)) {
+                preFallX = gravX; preFallY = gravY; preFallZ = gravZ;
+            }
             entryPath = "B standalone impact";
         }
 

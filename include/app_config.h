@@ -267,10 +267,83 @@
 // recordings reaches 3.09g. At 3.2 the gap between them was 0.11g, which is
 // less than the run-to-run spread of a single gesture. 3.5 keeps all 13 falls
 // and widens the margin to 0.41g, so it costs nothing measured and buys room.
+//
+// WHAT THIS PATH STILL DOES NOT COVER, and why it is not fixed here.
+//
+// The slump and the slide down a wall named above are the reason path B exists,
+// but re-reading fall_features.csv shows the captures never contained one. All
+// 13 labelled falls have min_g at or below 0.82g and 11 of them go below 0.4g,
+// so every recorded fall passed through free fall and would have entered by
+// path A regardless. They were dropped or thrown, peaking at 3.53-11.7g. A slow
+// collapse is absent from the data entirely.
+//
+// So the detector has no measured example of the case this path was written
+// for, and a third entry path for slow falls cannot be designed from what is
+// here: every threshold in it would be invented. The three labelled non-falls
+// peak at 1.55g, 2.30g and 3.09g, which sets the trap concretely -- a slow fall
+// produces no sharp impact, so any bar low enough to catch one sits below 3.09g
+// and starts admitting ordinary movement. With three negatives there is no way
+// to estimate what that would cost.
+//
+// This is the same trap FALL_ORIENTATION_MIN_DEG below was disabled to avoid:
+// keeping a feature whose behaviour is unmeasured and tuning it until the
+// recordings pass. The honest position is that slow falls are currently NOT
+// detected, and that closing the gap needs captures containing one -- a
+// controlled slump onto a mat, and the long negative session that would show
+// what a lower bar costs.
 #define FALL_IMPACT_STANDALONE_G  3.5f
 
 // How long after a free fall an impact still counts as belonging to it.
 #define FALL_IMPACT_WINDOW_MS     1500UL
+
+// How far back the pre-fall posture is read from, for path B only.
+//
+// Path B sees no free fall, so there is no earlier event to snapshot on: by the
+// time the impact registers, the body is already down. The old code snapshotted
+// the live gravity estimate on the impact sample, which is a posture already
+// partway through the fall.
+//
+// Sizing this needs the rate the gravity filter actually runs at, which is NOT
+// the IMU sampling rate. pollQMI8658Service() samples at 235 Hz to catch impact
+// peaks, but updateFallDetector() -- and with it the 0.98/0.02 low-pass -- runs
+// on the 20 ms sensor tick, 50 Hz. So the filter's time constant is
+// 1/(50 * 0.02) = 1.0 s, and a fall of 400-800 ms moves it by roughly a third
+// to a half. Enough to matter, and less than it would be at the IMU rate.
+//
+// 600 ms is a compromise between two failure modes rather than a measured
+// figure. Too short and the entry is still mid-fall, which is the bug. Too long
+// and it reaches back past the fall into whatever came before -- bending to
+// pick something up would then read as a posture change by itself. At 600 ms
+// the estimate retains about 55% of the standing orientation, so the ring entry
+// is meaningfully closer to upright than the impact-moment value without
+// reaching into unrelated activity.
+//
+// UNCALIBRATED, like every other constant in this block, and resting on the
+// filter time constant plus published fall durations rather than a measurement
+// from this device. The tilt check it feeds is currently disabled
+// (FALL_ORIENTATION_MIN_DEG 0.0), so today it only affects the logged angle --
+// which is exactly the number a calibration session needs to be trustworthy
+// before that check can be judged.
+#define FALL_PREFALL_DELAY_MS     600UL
+
+// Ring capacity, in ticks. Only a bound on how far back the search can reach --
+// the lookback itself is set by FALL_PREFALL_DELAY_MS above, because entries
+// carry timestamps and are selected by age rather than by counting backwards.
+//
+// It has to hold FALL_PREFALL_DELAY_MS worth of ticks in the worst case, which
+// is the FASTEST the tick can run: a short tick means more entries per second.
+// updateFallDetector() runs on the 20 ms sensor tick, so 600 ms is 30 entries
+// at nominal speed. It cannot run faster than that, since the tick is
+// millis()-gated, and it often runs slower -- a measured capture showed ~48 ms
+// with a frame in flight, which needs only 13 entries for the same 600 ms.
+//
+// 64 doubles the nominal requirement so that lowering SENSOR_PERIOD_MS or
+// raising FALL_PREFALL_DELAY_MS moderately does not silently truncate the
+// lookback. If either changes a lot, check that 64 * SENSOR_PERIOD_MS still
+// exceeds FALL_PREFALL_DELAY_MS; if it does not, the search runs out of
+// entries and falls back to the live estimate, which is the bug this was
+// written to fix. Four arrays of 64 cost 1 kB.
+#define FALL_PREFALL_RING_LEN     64
 
 // Phase 3 -- how long the wearer must lie still, measured from the impact.
 #define FALL_CONFIRM_WINDOW_MS    3000UL
