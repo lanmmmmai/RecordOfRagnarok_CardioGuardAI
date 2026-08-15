@@ -136,7 +136,7 @@ static bool detectBeatAdaptive(uint32_t ir) {
     if (acSignal > g_prevAc) {
         g_rising = true;
     } else if (g_rising && acSignal < g_prevAc) {
-        if (g_prevAc > threshold && g_prevAc > 150.0f && g_samplesSinceBeat >= 116) {
+        if (g_prevAc > threshold && g_prevAc > 150.0f && g_samplesSinceBeat >= 130) {
             beatDetected = true;
             g_samplesSinceBeat = 0;
             g_peakAc = g_prevAc;
@@ -376,7 +376,12 @@ void updateMAX30102Service() {
                             }
                             // True Median Filter selection from sorted temp array,
                             // then stage 5 smoothing on top of it.
-                            float smoothed = kalmanUpdate((float)temp[valid / 2]);
+                            float rawMedian = (float)temp[valid / 2];
+                            if (kalmanX == 0.0f) {
+                                kalmanX = rawMedian;
+                                kalmanP = 1.0f;
+                            }
+                            float smoothed = kalmanUpdate(rawMedian);
                             g_watchState.heartRateBPM = (uint16_t)(smoothed + 0.5f);
                             g_watchState.hrValid = true;
                             g_watchState.heartRateHistory[g_watchState.historyIndex] =
