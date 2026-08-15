@@ -43,21 +43,77 @@ import os
 import re
 import sys
 
-# Must match include/app_config.h. If you change a threshold there, change it
-# here too, or this script will report on a firmware that no longer exists.
+# Thresholds are read out of include/app_config.h at run time rather than
+# copied here.
+#
+# They used to be copied, under a comment instructing whoever changed one to
+# change it in both places. That instruction was not followed and could not
+# have been noticed: when FALL_IMPACT_STANDALONE_G went 3.2 -> 3.5 the copy
+# stayed at 3.2, so the script kept scoring captures against a firmware that no
+# longer existed and said nothing, because a stale number looks exactly like a
+# current one. The plot legend below still read "standalone 3.2g" long after
+# the constant moved, which is how it was eventually caught.
+#
+# The failure matters more here than in most places. The entire purpose of this
+# script is to report what the firmware would have decided, so a threshold that
+# silently disagrees with the firmware does not degrade the output -- it
+# invalidates it, while leaving it looking authoritative.
+_CONFIG_H = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                         "..", "include", "app_config.h")
+
+
+def _read_defines(path):
+    """Pull the fall-block #defines out of app_config.h.
+
+    Deliberately a small regex rather than a C parser: these are all plain
+    numeric literals, and a parser would be a second thing to keep working.
+    Anything not found raises rather than defaulting -- a missing constant
+    means the header was restructured, and guessing a value at that point
+    would reintroduce exactly the silent drift this replaced.
+    """
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+    except OSError as exc:
+        sys.exit(f"cannot read {path}: {exc}\n"
+                 "This script reads the fall thresholds from the header; it "
+                 "has no copy of its own to fall back on.")
+
+    found = {}
+    for m in re.finditer(r"^\s*#define\s+(FALL_\w+)\s+([0-9.]+)[fFuUlL]*\s*(?://.*)?$",
+                         text, re.MULTILINE):
+        found[m.group(1)] = float(m.group(2))
+    return found
+
+
+_D = _read_defines(_CONFIG_H)
+
+
+def _need(name):
+    if name not in _D:
+        sys.exit(f"{name} not found in {_CONFIG_H}.\n"
+                 "The header has been restructured. Fix the lookup rather than "
+                 "hardcoding a value, or this script goes back to reporting on "
+                 "a firmware that does not exist.")
+    return _D[name]
+
+
+# Not a fall threshold and not in the fall block; the QMI8658 is configured for
+# +/-8 g, so a count is 1/4096 g.
 LSB_PER_G = 4096.0
-FREEFALL_G = 0.4
-IMPACT_G = 2.5
-IMPACT_STANDALONE_G = 3.5
-IMPACT_WINDOW_MS = 1500
-CONFIRM_WINDOW_MS = 3000
-SETTLE_MS = 400
-STILLNESS_MAX_DEV_G = 0.35
-STILLNESS_MIN_CALM_RATIO = 0.50
+
+FREEFALL_G = _need("FALL_FREEFALL_G")
+IMPACT_G = _need("FALL_IMPACT_G")
+IMPACT_STANDALONE_G = _need("FALL_IMPACT_STANDALONE_G")
+IMPACT_WINDOW_MS = _need("FALL_IMPACT_WINDOW_MS")
+CONFIRM_WINDOW_MS = _need("FALL_CONFIRM_WINDOW_MS")
+SETTLE_MS = _need("FALL_SETTLE_MS")
+STILLNESS_MAX_DEV_G = _need("FALL_STILLNESS_MAX_DEV_G")
+STILLNESS_MIN_CALM_RATIO = _need("FALL_STILLNESS_MIN_CALM_RATIO")
 # 0 disables the orientation test, matching the firmware's special case. The
 # angle is still computed and reported so the evidence keeps accumulating.
-ORIENTATION_MIN_DEG = 0.0
-NEARMISS_G = 1.8
+ORIENTATION_MIN_DEG = _need("FALL_ORIENTATION_MIN_DEG")
+NEARMISS_G = _need("FALL_NEARMISS_LOG_G")
 
 # Gravity low-pass coefficient, matching fall_detector.cpp.
 GRAV_ALPHA = 0.02
@@ -577,7 +633,7 @@ def plot(samples, events, is_fall, rows, outdir):
         ax.text(samples[trigger].t / 1000.0, max(g) * 0.95, str(i + 1),
                 fontsize=7, ha="center")
     for y, label, c in ((IMPACT_G, "impact 2.5g", "#d33"),
-                        (IMPACT_STANDALONE_G, "standalone 3.2g", "#a11"),
+                        (IMPACT_STANDALONE_G, f"standalone {IMPACT_STANDALONE_G:g}g", "#a11"),
                         (FREEFALL_G, "free-fall 0.4g", "#39c"),
                         (1.0, "rest 1g", "#999")):
         ax.axhline(y, color=c, linestyle="--", linewidth=0.7)

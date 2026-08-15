@@ -291,7 +291,40 @@
 // detected, and that closing the gap needs captures containing one -- a
 // controlled slump onto a mat, and the long negative session that would show
 // what a lower bar costs.
-#define FALL_IMPACT_STANDALONE_G  3.5f
+//
+// Raised 3.5 -> 5.0 on 2026-08-16, from the first negative capture that exists.
+// Ten minutes worn on the wrist, arms swung deliberately hard, produced 60
+// events; 16 entered by path B and every one of them confirmed. Path B was
+// therefore responsible for 14 of the session's 18 false alarms while, across
+// every capture ever taken, deciding zero real falls.
+//
+// The reason it fires so freely is that nothing downstream stops it. Once past
+// this threshold the only live test is calm_ratio >= 0.5, because
+// FALL_ORIENTATION_MIN_DEG is 0 and the orientation check is compiled to an
+// unconditional pass. So path B currently means "hit harder than this, then
+// hold reasonably still for 3 s" -- which is also a description of swinging an
+// arm and letting it rest.
+//
+// 5.0 is a deliberate partial measure and should not be read as a fitted value.
+// peak_g does not separate these two sets at any threshold: the hardest arm
+// swing peaks at 9.24g and the lightest labelled fall at 3.53g, so the
+// distributions overlap across their whole width. Scoring this capture, 5.0
+// removes 6 of the 16 path B false entries and leaves 10. 9.5 would leave 1,
+// but sits above 11 of the 13 recorded falls and would reduce path B to
+// decoration. 5.0 keeps it a usable backstop while cutting the worst of the
+// noise, and the residual 10 are accepted knowingly.
+//
+// It costs no measured detection either way. All 13 falls dip into free fall
+// (min_g <= 0.82g, 11 below 0.4g), so all 13 enter by path A at 2.5g and never
+// consult this constant.
+//
+// What actually separates the two sets is min_g -- 11 of 13 falls below 0.4g,
+// against 1 of 16 path B false entries. Requiring free-fall evidence here would
+// remove 15 of the 16 rather than 6, and would be the right fix. It is not a
+// threshold move but a change to what path B means, so it is left for a
+// deliberate decision rather than folded into this one. This is the next thing
+// to do to path B, and the reason the remaining 10 false entries persist.
+#define FALL_IMPACT_STANDALONE_G  5.0f
 
 // How long after a free fall an impact still counts as belonging to it.
 #define FALL_IMPACT_WINDOW_MS     1500UL
@@ -444,7 +477,7 @@
 //   millis, accX, accY, accZ, gyroX, gyroY, gyroZ, totalG, fallState
 // Currently ON: a data-collection session is in progress. Set back to 0 once
 // the fall recordings are done.
-#define FALL_LOG_RAW_SAMPLES      0
+#define FALL_LOG_RAW_SAMPLES      1
 
 // Temporary instrumentation for the tick budget. Prints a TICKPROF line every
 // 2 s giving the worst single duration each job in loop() has cost since the
