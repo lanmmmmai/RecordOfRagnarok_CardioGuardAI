@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Bluetooth, Radio, Cpu, Wifi, CheckCircle2, Zap, X } from 'lucide-react';
 import confetti from 'canvas-confetti';
@@ -17,7 +17,7 @@ export default function RealtimeDeviceBridge({
       setIsTestingConnection(false);
       const diagnostic = {
         timestamp: new Date().toLocaleTimeString('vi-VN'),
-        deviceName: "Đồng Hồ Enroll (Nguyễn Thị Mai Lan)",
+        deviceName: "Đồng Hồ SafeWatch (Nguyễn Thị Mai Lan)",
         hardwarePing: "0.8 ms (Trực tiếp)",
         ppgSensorStatus: "MAX30102 PPG Active",
         imuSensorStatus: "QMI8658 3D IMU (100Hz)",
@@ -42,7 +42,7 @@ export default function RealtimeDeviceBridge({
       setConnectionState({
         connected: true,
         mode: 'WEB_BLUETOOTH_BLE',
-        deviceName: device.name || 'Đồng Hồ Enroll',
+        deviceName: device.name || 'Đồng Hồ SafeWatch',
         signal: -48,
         battery: 95
       });
@@ -50,7 +50,7 @@ export default function RealtimeDeviceBridge({
       setConnectionState({
         connected: true,
         mode: 'LIVE_SENSOR_STREAM',
-        deviceName: 'Đồng Hồ Enroll (Nguyễn Thị Mai Lan)',
+        deviceName: 'Đồng Hồ SafeWatch (Nguyễn Thị Mai Lan)',
         signal: -56,
         battery: 92
       });
@@ -65,7 +65,7 @@ export default function RealtimeDeviceBridge({
       setConnectionState({
         connected: true,
         mode: 'WEB_SERIAL_COM_PORT',
-        deviceName: 'Đồng Hồ Enroll (USB Serial)',
+        deviceName: 'Đồng Hồ SafeWatch (USB Serial)',
         signal: -30,
         battery: 100
       });
@@ -73,7 +73,7 @@ export default function RealtimeDeviceBridge({
       setConnectionState({
         connected: true,
         mode: 'LIVE_SENSOR_STREAM',
-        deviceName: 'Đồng Hồ Enroll (Nguyễn Thị Mai Lan)',
+        deviceName: 'Đồng Hồ SafeWatch (Nguyễn Thị Mai Lan)',
         signal: -56,
         battery: 92
       });
@@ -120,7 +120,7 @@ export default function RealtimeDeviceBridge({
             </span>
           </div>
           <p className="text-xs font-bold text-white">Bluetooth BLE</p>
-          <p className="text-[11px] text-slate-400">Kết nối Đồng Hồ Enroll không dây qua Bluetooth.</p>
+          <p className="text-[11px] text-slate-400">Kết nối Đồng Hồ SafeWatch không dây qua Bluetooth.</p>
         </button>
 
         <button
@@ -136,7 +136,7 @@ export default function RealtimeDeviceBridge({
             </span>
           </div>
           <p className="text-xs font-bold text-white">Cáp USB Serial</p>
-          <p className="text-[11px] text-slate-400">Đọc dữ liệu Đồng Hồ Enroll qua cáp USB Type-C.</p>
+          <p className="text-[11px] text-slate-400">Đọc dữ liệu Đồng Hồ SafeWatch qua cáp USB Type-C.</p>
         </button>
 
         <div className="p-3.5 glass-panel rounded-2xl border border-amber-400/20 space-y-1.5 text-left">
@@ -239,3 +239,4 @@ export default function RealtimeDeviceBridge({
     </div>
   );
 }
+

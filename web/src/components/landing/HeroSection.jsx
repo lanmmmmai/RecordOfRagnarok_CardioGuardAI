@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import Watch3DCanvas from '../3d/Watch3DCanvas';
 import { Activity, BellRing, ArrowRight, Zap, ChevronRight } from 'lucide-react';
 
@@ -26,7 +26,7 @@ export default function HeroSection({ onExploreDashboard, onTriggerSOS, simulate
           {/* NỘI DUNG THẺ H1 CHÍNH THỨC */}
           <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold tracking-tight leading-[1.1]">
             <span className="block gradient-text-cyan font-black filter drop-shadow-[0_0_25px_rgba(0,242,254,0.4)]">
-              Đồng Hồ Enroll
+              ĐỒNG HỒ SAFEWATCH
             </span>
           </h1>
 
@@ -38,7 +38,7 @@ export default function HeroSection({ onExploreDashboard, onTriggerSOS, simulate
           {/* PHẦN MÔ TẢ */}
           <p className="text-slate-300 text-sm sm:text-base leading-[1.6] font-normal max-w-xl mx-auto lg:mx-0">
             CardioGuardAI giải pháp bảo vệ sức khỏe sinh học tại biên, tích hợp trực tiếp 
-            trên <strong>Đồng Hồ Enroll</strong>. Lọc nhiễu 5 tầng, tự động phát hiện té ngã 3D &amp; gửi thông báo SOS Telegram chỉ sau 15 giây.
+            trên <strong>ĐỒNG HỒ SAFEWATCH</strong>. Lọc nhiễu 5 tầng, tự động phát hiện té ngã 3D &amp; gửi thông báo SOS Telegram chỉ sau 15 giây.
           </p>
 
           {/* CÁC THẺ THÔNG SỐ (3 cards) */}
@@ -83,7 +83,7 @@ export default function HeroSection({ onExploreDashboard, onTriggerSOS, simulate
 
         </div>
 
-        {/* Right Column: Đồng Hồ Enroll 3D Canvas */}
+        {/* Right Column: ĐỒNG HỒ SAFEWATCH 3D Canvas */}
         <div className="lg:col-span-5 relative flex flex-col items-center mt-2 lg:mt-0">
           <Watch3DCanvas onTriggerSOS={onTriggerSOS} simulatedBpm={simulatedBpm} />
         </div>
@@ -93,3 +93,4 @@ export default function HeroSection({ onExploreDashboard, onTriggerSOS, simulate
     </section>
   );
 }
+

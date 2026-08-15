@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import DashboardHeader from './DashboardHeader';
 import VitalCard from './VitalCard';
 import RealtimeDeviceBridge from './RealtimeDeviceBridge';
@@ -31,7 +31,7 @@ export default function Dashboard({
   const [connectionState, setConnectionState] = useState({
     connected: true,
     mode: 'WEB_BLUETOOTH_BLE',
-    deviceName: 'Đồng Hồ Enroll (Nguyễn Thị Mai Lan)',
+    deviceName: 'Đồng Hồ SafeWatch (Nguyễn Thị Mai Lan)',
     signal: -54,
     battery: 92
   });
@@ -166,3 +166,4 @@ export default function Dashboard({
     </div>
   );
 }
+

@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { User, Activity, Wifi, Battery, AlertTriangle, Download, Settings, HeartPulse } from 'lucide-react';
 
 export default function DashboardHeader({
@@ -40,7 +40,7 @@ export default function DashboardHeader({
               <span>•</span>
               <span>Bệnh lý: <strong className="text-amber-300">Thiếu máu tim nhẹ</strong></span>
               <span>•</span>
-              <span className="text-emerald-400 font-mono">Đồng Hồ Enroll Online</span>
+              <span className="text-emerald-400 font-mono">Đồng Hồ SafeWatch Online</span>
             </div>
           </div>
         </div>
@@ -108,3 +108,4 @@ export default function DashboardHeader({
     </div>
   );
 }
+

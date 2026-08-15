@@ -1,4 +1,4 @@
-// Mock Data for CardioGuardAI Personalized Bio-Telemetry & Dashboard
+﻿// Mock Data for CardioGuardAI Personalized Bio-Telemetry & Dashboard
 
 export const initialUserProfile = {
   id: "CG-AI-9988-VN",
@@ -10,7 +10,7 @@ export const initialUserProfile = {
   height: "160 cm",
   weight: "54 kg",
   avatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=300&q=80",
-  deviceModel: "Đồng Hồ Enroll",
+  deviceModel: "Đồng Hồ SafeWatch",
   firmwareVersion: "v2.4.1-TinyML-INT8",
   macAddress: "DC:54:75:A8:99:B2",
   connectedStatus: "ONLINE",
@@ -148,3 +148,4 @@ export const initialEventLogs = [
     details: "Đã bấm HỦY thành công. Không phát tin nhắn SOS."
   }
 ];
+

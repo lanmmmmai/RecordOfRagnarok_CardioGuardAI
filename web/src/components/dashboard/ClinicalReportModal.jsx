@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { FileText, Printer, Download, ShieldCheck, X, Activity, Heart, Cpu, Send, CheckCircle2 } from 'lucide-react';
 import { initialUserProfile, mockVitalSummary } from '../../data/mockPersonalData';
 
@@ -72,7 +72,7 @@ export default function ClinicalReportModal({ isOpen, onClose }) {
                 CARDIO<span className="text-cyan-400">GUARD</span><span className="text-rose-500">AI</span> CLINICAL REPORT
               </h1>
               <p className="text-xs text-slate-400 mt-1">
-                Hệ thống Cảnh báo Té ngã, Loạn nhịp tim & Lọc Nhiễu Tín hiệu tại Biên Đồng Hồ Enroll
+                Hệ thống Cảnh báo Té ngã, Loạn nhịp tim & Lọc Nhiễu Tín hiệu tại Biên Đồng Hồ SafeWatch
               </p>
             </div>
 
@@ -190,3 +190,4 @@ export default function ClinicalReportModal({ isOpen, onClose }) {
     </div>
   );
 }
+
