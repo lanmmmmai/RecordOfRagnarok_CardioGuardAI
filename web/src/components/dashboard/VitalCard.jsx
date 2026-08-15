@@ -1,29 +1,34 @@
 import React from 'react';
-import { Heart, Activity, ShieldCheck, TrendingUp, Wind } from 'lucide-react';
+import { Heart, ShieldCheck, TrendingUp, Wind } from 'lucide-react';
 import ScrollReveal from '../ScrollReveal';
 
 export default function VitalCard({ isConnected, rawTelemetry }) {
-  const pulseVal = isConnected
-    ? (rawTelemetry?.skinContact && rawTelemetry?.pulse > 0 ? rawTelemetry.pulse : 0)
-    : 0;
+  const hasSkinContact = Boolean(isConnected && rawTelemetry?.skinContact);
+
+  // Pulse strictly 0 when not touching skin
+  const pulseVal = hasSkinContact && rawTelemetry?.pulse > 0 ? rawTelemetry.pulse : 0;
 
   const pulseStatus = isConnected
-    ? (!rawTelemetry?.skinContact || rawTelemetry?.pulse === 0
+    ? (!hasSkinContact || pulseVal === 0
         ? "CHƯA ĐEO DA (0 BPM)"
-        : rawTelemetry.pulse > 100 ? "NHỊP NHANH" : rawTelemetry.pulse < 55 ? "NHỊP CHẬM" : "BÌNH THƯỜNG")
+        : pulseVal > 100 ? "NHỊP NHANH" : pulseVal < 55 ? "NHỊP CHẬM" : "BÌNH THƯỜNG")
     : "CHƯA KẾT NỐI (0 BPM)";
 
-  const rawSpo2 = isConnected && rawTelemetry?.spo2Valid && rawTelemetry?.spo2 > 0 ? rawTelemetry.spo2 : 0;
-  const spo2Val = isConnected ? `${rawSpo2}%` : "0%";
+  // SpO2 strictly 0% when not touching skin
+  const rawSpo2 = hasSkinContact && rawTelemetry?.spo2Valid && rawTelemetry?.spo2 > 0 ? rawTelemetry.spo2 : 0;
+  const spo2Val = `${rawSpo2}%`;
 
   const spo2Status = isConnected
-    ? (rawSpo2 === 0 ? "CHƯA CÓ TÍN HIỆU" : (rawSpo2 >= 96 ? "TỐI ƯU (96-100%)" : rawSpo2 >= 94 ? "CHẤP NHẬN (94-95%)" : "THIẾU OXY (<94%)"))
+    ? (!hasSkinContact || rawSpo2 === 0 ? "CHƯA CÓ TÍN HIỆU" : (rawSpo2 >= 96 ? "TỐI ƯU (96-100%)" : rawSpo2 >= 94 ? "CHẤP NHẬN (94-95%)" : "THIẾU OXY (<94%)"))
     : "CHƯA KẾT NỐI";
 
-  const perfusionVal = isConnected && rawTelemetry?.quality
+  // Perfusion Index & SQI strictly 0 when not touching skin
+  const perfusionVal = hasSkinContact && rawTelemetry?.quality
     ? ((rawTelemetry.quality / 50.0) * 1.2).toFixed(2)
     : "0.00";
+  const sqiVal = hasSkinContact ? (rawTelemetry?.quality || 0) : 0;
 
+  // Battery and Voltage ALWAYS retain real measured hardware status
   const batteryVal = isConnected ? `${rawTelemetry?.battery || 0}%` : "0%";
   const voltageVal = isConnected && rawTelemetry?.voltage ? `${rawTelemetry.voltage.toFixed(2)}V` : "0.00V";
 
@@ -34,7 +39,7 @@ export default function VitalCard({ isConnected, rawTelemetry }) {
       unit: "BPM",
       status: pulseStatus,
       statusColor: pulseVal === 0 ? "text-slate-400 border-slate-700 bg-slate-800/40" : (pulseVal > 100 ? "text-rose-400 border-rose-500/40 bg-rose-500/15" : "text-emerald-400 border-emerald-500/40 bg-emerald-500/15"),
-      subInfo: `Chất lượng SQI: ${rawTelemetry?.quality || 0}%`,
+      subInfo: `Chất lượng SQI: ${sqiVal}%`,
       icon: Heart,
       badgeBorder: "border-rose-500/30 hover:border-rose-400/60 shadow-rose-500/5",
       iconColor: "text-rose-400 bg-rose-500/10"

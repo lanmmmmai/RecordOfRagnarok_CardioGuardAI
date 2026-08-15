@@ -6,13 +6,10 @@ export default function SpO2ClinicalModule({ isConnected, rawTelemetry }) {
   const [spo2History, setSpo2History] = useState(() => Array(30).fill(0));
   const canvasRef = useRef(null);
 
-  const spo2Val = isConnected && rawTelemetry?.spo2Valid && rawTelemetry?.spo2 > 0
-    ? rawTelemetry.spo2
-    : 0;
+  const hasSkinContact = Boolean(isConnected && rawTelemetry?.skinContact);
+  const spo2Val = hasSkinContact && rawTelemetry?.spo2Valid && rawTelemetry?.spo2 > 0 ? rawTelemetry.spo2 : 0;
 
-  const perfusion = isConnected && rawTelemetry?.quality
-    ? ((rawTelemetry.quality / 50.0) * 1.2).toFixed(2)
-    : "0.00";
+  const perfusion = hasSkinContact && rawTelemetry?.quality ? ((rawTelemetry.quality / 50.0) * 1.2).toFixed(2) : "0.00";
 
   // Classify clinical status
   const getClinicalStatus = (val) => {

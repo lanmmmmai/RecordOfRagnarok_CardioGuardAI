@@ -264,21 +264,10 @@ void updateMAX30102Service() {
         if (ir < (g_watchState.skinContact ? PPG_CONTACT_IR_RELEASE
                                            : PPG_CONTACT_IR_THRESHOLD)) {
             if (g_watchState.skinContact) {
-                // Ride out short gaps. Only a sustained loss means the finger
-                // actually left; anything shorter is noise or a small shift in
-                // pressure, and discarding four seconds of good signal over it
-                // is what kept SpO2 permanently blank.
-                if (++contactGapSamples >= PPG_CONTACT_GAP_SAMPLES) {
-                    g_watchState.skinContact = false;
-                    contactGapSamples = 0;
-                    resetMeasurement();
-                }
+                g_watchState.skinContact = false;
+                contactGapSamples = 0;
+                resetMeasurement();
             }
-            // Nothing is accumulated for this sample, so the partial average
-            // must not keep the slot it had started. Without this the next slot
-            // is divided by PPG_DECIMATE having summed fewer than that many
-            // samples, which reads as a falsely low DC baseline and skews the
-            // ratio the SpO2 figure is computed from.
             decimateCount = 0;
             irAccum = redAccum = 0;
             continue;
