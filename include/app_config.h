@@ -350,6 +350,17 @@
 // How long the phone may be out of BLE range before the watch reports it.
 #define BLE_LEASH_TIMEOUT_MS  60000UL
 
+// ---------------------------------------------------------------------------
+// Clinical Thresholds for Alerts & Color Coding (Strictly for Notifications, NEVER Hardcoded Measurements)
+// ---------------------------------------------------------------------------
+#define ALERT_HR_BRADYCARDIA_BPM      50    // Heart rate below 50 BPM -> Bradycardia warning
+#define ALERT_HR_TACHYCARDIA_BPM      110   // Heart rate above 110 BPM -> Tachycardia warning
+#define ALERT_HR_CRITICAL_HIGH_BPM    130   // Heart rate above 130 BPM -> Critical high warning
+#define ALERT_SPO2_MILD_HYPOXIA_PCT   94    // SpO2 below 95% -> Mild hypoxia warning
+#define ALERT_SPO2_SEVERE_HYPOXIA_PCT 90    // SpO2 below 90% -> Critical hypoxia emergency
+#define ALERT_BATTERY_LOW_PCT         20    // Battery below 20% -> Low battery notification
+
+
 // BLE GATT identifiers. Documented for the companion app in BLE_PROTOCOL.md.
 #define BLE_DEVICE_NAME        "HealthWatch"
 #define BLE_SERVICE_UUID       "6e400001-b5a3-f393-e0a9-e50e24dcca9e"

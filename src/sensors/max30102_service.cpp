@@ -307,8 +307,8 @@ void updateMAX30102Service() {
                     if (acIr > 5.0f && acRed > 5.0f) {
                         float rRatio = (acRed / g_dcEstRed) / (acIr / g_dcEstIr);
                         float instantSpo2 = 104.0f - 17.0f * rRatio;
-                        if (instantSpo2 > 100.0f) instantSpo2 = 99.0f;
-                        if (instantSpo2 < 90.0f) instantSpo2 = 95.0f;
+                        if (instantSpo2 > 100.0f) instantSpo2 = 100.0f;
+                        if (instantSpo2 < 70.0f) instantSpo2 = 70.0f;
                         g_watchState.spo2Percent = (uint8_t)(instantSpo2 + 0.5f);
                         g_watchState.spo2Valid = true;
                     }
@@ -414,8 +414,8 @@ void updateMAX30102Service() {
                                 if (acIr > 5.0f && acRed > 5.0f) {
                                     float rRatio = (acRed / g_dcEstRed) / (acIr / g_dcEstIr);
                                     float instantSpo2 = 104.0f - 17.0f * rRatio;
-                                    if (instantSpo2 > 100.0f) instantSpo2 = 99.0f;
-                                    if (instantSpo2 < 90.0f) instantSpo2 = 95.0f;
+                                    if (instantSpo2 > 100.0f) instantSpo2 = 100.0f;
+                                    if (instantSpo2 < 70.0f) instantSpo2 = 70.0f;
                                     g_watchState.spo2Percent = (uint8_t)(instantSpo2 + 0.5f);
                                     g_watchState.spo2Valid = true;
                                 } else if (g_watchState.spo2Percent == 0) {
