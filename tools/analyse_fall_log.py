@@ -494,7 +494,11 @@ def report_outcome(rows, is_fall):
         missed = [(i + 1, r) for i, (r, f) in enumerate(zip(rows, is_fall))
                   if f and not r.get("truncated") and r["verdict"] != "ALERT"]
         for idx, r in missed:
-            why = r["fail"] or r["verdict"]
+            # .get, because an event that never entered confirmation has no
+            # failed check to name -- the reason it was missed is the verdict
+            # itself ("no entry"), and indexing "fail" directly raised KeyError
+            # on exactly those events.
+            why = r.get("fail") or r["verdict"]
             print(f"    event {idx} missed: {why}")
     if others:
         print(f"  false alarms        {false_alarms}/{len(others)} non-fall events")
