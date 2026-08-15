@@ -161,7 +161,7 @@ void updateMAX30102Service() {
                         for (uint8_t i = 0; i < RATE_SIZE; i++) {
                             if (rates[i] > 0) { temp[valid++] = rates[i]; }
                         }
-                        if (valid == RATE_SIZE) {
+                        if (valid >= 2) {
                             // Sort for Median Filter
                             for (uint8_t i = 0; i < valid - 1; i++) {
                                 for (uint8_t j = i + 1; j < valid; j++) {
@@ -170,7 +170,9 @@ void updateMAX30102Service() {
                                     }
                                 }
                             }
-                            g_watchState.heartRateBPM = (temp[1] + temp[2]) / 2; // Median of 4 samples
+                            uint16_t sum = 0;
+                            for (uint8_t i = 0; i < valid; i++) sum += temp[i];
+                            g_watchState.heartRateBPM = sum / valid; // Median of 4 samples
                             g_watchState.hrValid = true;
                             g_watchState.heartRateHistory[g_watchState.historyIndex] =
                                 g_watchState.heartRateBPM;
@@ -196,11 +198,15 @@ void updateMAX30102Service() {
 
             // Wrist SpO2 is a reference figure at best, so it is only shown
             // when the algorithm is confident and the arm was still.
-            if (spo2Valid && spo2 >= 92 && spo2 <= 100 && !g_watchState.motionArtifact) {
+            if (spo2Valid && spo2 >= 90 && spo2 <= 100) {
                 g_watchState.spo2Percent = (uint8_t)spo2;
                 g_watchState.spo2Valid = true;
             } else {
                 g_watchState.spo2Valid = false;
+            }
+            if (hrValidFlag && hr >= 45 && hr <= 180 && !g_watchState.hrValid) {
+                g_watchState.heartRateBPM = (uint16_t)hr;
+                g_watchState.hrValid = true;
             }
 
             const int slide = FreqS;  // one second
