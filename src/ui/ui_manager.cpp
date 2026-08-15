@@ -81,10 +81,14 @@ void handleUITouchInput(int touchX, int touchY, uint8_t gestureID) {
         else if (screen == SCREEN_FALL_ALERT) {
             if (g_watchState.fallState == FALL_STATE_ALERT) {
                 // Only the CANCEL button cancels, and it is checked against the
-                // rectangle actually drawn (40,168)-(200,210). A loose "anywhere
-                // below Y=150" test lets a knock against a table dismiss a real
-                // alert during the countdown.
-                if (touchX >= 40 && touchX <= 200 && touchY >= 168 && touchY <= 210) {
+                // rectangle actually drawn in screen_fall_alert.cpp: origin
+                // (40,166), size 160x40, so (40,166)-(200,206). A loose
+                // "anywhere below Y=150" test lets a knock against a table
+                // dismiss a real alert during the countdown. Keep these two
+                // numbers in step -- the button moved once already and the
+                // hit box was left behind, which made the top of the button
+                // dead and the strip below it live.
+                if (touchX >= 40 && touchX <= 200 && touchY >= 166 && touchY <= 206) {
                     cancelFallAlert();
                 }
             }

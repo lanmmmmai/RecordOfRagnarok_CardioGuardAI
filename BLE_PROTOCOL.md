@@ -29,12 +29,20 @@ Wi-Fi là điểm hỏng đơn lẻ dễ xảy ra nhất của thiết bị này
 |---|---|
 | Tên thiết bị | `HealthWatch` |
 | Công suất phát | `ESP_PWR_LVL_P9` (+9 dBm, mức cao nhất) |
+| Chu kỳ quảng bá | 20–40 ms (`setMinInterval(0x20)` / `setMaxInterval(0x40)`) — nhanh, để điện thoại thấy gần như tức thì |
 | Scan response | Bật |
-| Ghép đôi / mã hoá | **Không có** — xem [§6 Bảo mật](#6-bảo-mật--hạn-chế-đã-biết) |
+| Ghép đôi / mã hoá | **Không có.** `setSecurityAuth(false, false, false)` — không bonding, không MITM, không Secure Connections |
+| IO capability | `BLE_HS_IO_NO_INPUT_OUTPUT` → chế độ **Just Works** |
 | Số kết nối cùng lúc | 1 (mặc định NimBLE) |
 
 Sau khi điện thoại ngắt kết nối, đồng hồ **tự quảng bá lại ngay** (`onDisconnect` →
 `startAdvertising()`), không cần khởi động lại.
+
+**Vì sao cố ý tắt bonding:** khi bật bonding, điện thoại lưu khoá ghép đôi; nếu đồng hồ
+nạp lại firmware hoặc xoá khoá, điện thoại từ chối kết nối cho tới khi người dùng vào
+cài đặt Bluetooth bấm "Forget Device" bằng tay. Với thiết bị cấp cứu thì đó là hỏng hóc
+im lặng ở đúng lúc tệ nhất. Đánh đổi lại là bất kỳ ai trong tầm sóng cũng ghi được lệnh —
+xem [§6](#6-bảo-mật--hạn-chế-đã-biết).
 
 ---
 
@@ -228,7 +236,7 @@ liên lạc với ai, nên **phía ứng dụng cũng nên tự phát hiện m�
 
 | # | Vấn đề | Ảnh hưởng |
 |---|---|---|
-| 1 | 🔴 **Không ghép đôi, không mã hoá, không xác thực** | Bất kỳ thiết bị BLE nào trong tầm đều ghi được characteristic Command → **ai cũng có thể huỷ cảnh báo té ngã thật, hoặc bắn SOS giả**. Chấp nhận được cho đồ án; **phải sửa trước khi dùng thật** bằng NimBLE bonding + `NIMBLE_PROPERTY::WRITE_ENC` |
+| 1 | 🔴 **Không ghép đôi, không mã hoá, không xác thực** (Just Works, `setSecurityAuth(false,false,false)`) | Bất kỳ thiết bị BLE nào trong tầm đều ghi được characteristic Command → **ai cũng có thể huỷ cảnh báo té ngã thật, hoặc bắn SOS giả**. Đây là đánh đổi **có chủ ý** để tránh cảnh phải "Forget Device" thủ công sau mỗi lần nạp firmware. Chấp nhận được cho đồ án; **phải xử lý trước khi dùng thật** — hoặc bật bonding + `NIMBLE_PROPERTY::WRITE_ENC`, hoặc giữ Just Works nhưng thêm mã xác thực ở tầng ứng dụng trong chính gói lệnh |
 | 2 | 🟠 **Dữ liệu sức khoẻ phát quảng bá không mã hoá** | Nhịp tim và SpO₂ đi qua sóng dạng rõ; ai bắt gói cũng đọc được |
 | 3 | 🟠 **Dùng nhầm dải UUID của Nordic UART Service** | Ứng dụng khác có thể nhận nhầm thiết bị. Nên đổi sang UUID 128-bit tự sinh |
 | 4 | 🟡 **Mốc thời gian không đáng tin khi chưa có NTP** | Xem cảnh báo ở [§3.2](#32-fall--sự-kiện-té-ngã) |
