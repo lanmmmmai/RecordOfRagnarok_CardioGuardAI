@@ -292,7 +292,8 @@
 // controlled slump onto a mat, and the long negative session that would show
 // what a lower bar costs.
 //
-// Raised 3.5 -> 5.0 on 2026-08-16, from the first negative capture that exists.
+// Raised 3.5 -> 5.0 -> 7.0 on 2026-08-16, from the first negative capture that
+// exists.
 // Ten minutes worn on the wrist, arms swung deliberately hard, produced 60
 // events; 16 entered by path B and every one of them confirmed. Path B was
 // therefore responsible for 14 of the session's 18 false alarms while, across
@@ -305,26 +306,36 @@
 // hold reasonably still for 3 s" -- which is also a description of swinging an
 // arm and letting it rest.
 //
-// 5.0 is a deliberate partial measure and should not be read as a fitted value.
-// peak_g does not separate these two sets at any threshold: the hardest arm
-// swing peaks at 9.24g and the lightest labelled fall at 3.53g, so the
-// distributions overlap across their whole width. Scoring this capture, 5.0
-// removes 6 of the 16 path B false entries and leaves 10. 9.5 would leave 1,
-// but sits above 11 of the 13 recorded falls and would reduce path B to
-// decoration. 5.0 keeps it a usable backstop while cutting the worst of the
-// noise, and the residual 10 are accepted knowingly.
+// 7.0 is a chosen operating point, not a fitted value, and peak_g cannot be
+// fitted here in any case: the hardest arm swing in the capture peaks at 9.24g
+// and the lightest labelled fall at 3.53g, so the two distributions overlap
+// across their whole width. Every value on this axis is a trade, and the trade
+// was made toward fewer false alarms. Scoring this capture, path B false
+// entries go 16 (at 3.5) -> 6 (at 5.0) -> 3 (at 7.0) -> 1 (at 9.5).
 //
-// It costs no measured detection either way. All 13 falls dip into free fall
+// It costs no measured detection. All 13 labelled falls dip into free fall
 // (min_g <= 0.82g, 11 below 0.4g), so all 13 enter by path A at 2.5g and never
-// consult this constant.
+// consult this constant -- which is what makes moving it cheap, and also what
+// should temper any confidence drawn from that.
+//
+// Because the thing being traded away is not visible in the data. 7.0 sits
+// above 9 of the 13 recorded falls, so path B is now a backstop only for
+// impacts harder than most real falls produce. The case it was written for --
+// a collapse with no free-fall phase, which path A cannot see -- is precisely
+// the case that has never been captured, so raising the bar past it costs
+// nothing measurable while plausibly costing something real. That asymmetry is
+// worth stating plainly rather than reading the unchanged fall count as
+// evidence the move was free.
 //
 // What actually separates the two sets is min_g -- 11 of 13 falls below 0.4g,
 // against 1 of 16 path B false entries. Requiring free-fall evidence here would
-// remove 15 of the 16 rather than 6, and would be the right fix. It is not a
-// threshold move but a change to what path B means, so it is left for a
-// deliberate decision rather than folded into this one. This is the next thing
-// to do to path B, and the reason the remaining 10 false entries persist.
-#define FALL_IMPACT_STANDALONE_G  5.0f
+// remove 15 of the 16 while leaving the bar low, which is the fix this
+// threshold ladder is a substitute for: it would cut false alarms further than
+// 7.0 does and keep path B able to catch a light impact, instead of buying the
+// first by giving up the second. It is not a threshold move but a change to
+// what path B means, so it stays a deliberate decision rather than something
+// folded in here. This remains the next thing to do to path B.
+#define FALL_IMPACT_STANDALONE_G  7.0f
 
 // How long after a free fall an impact still counts as belonging to it.
 #define FALL_IMPACT_WINDOW_MS     1500UL
