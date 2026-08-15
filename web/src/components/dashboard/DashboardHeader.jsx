@@ -27,7 +27,7 @@ export default function DashboardHeader({
               alt={userProfile.name}
               className="w-16 h-16 rounded-2xl object-cover border-2 border-cyan-400/50 shadow-lg shadow-cyan-500/20"
             />
-            <span className={`absolute -bottom-1 -right-1 w-4 h-4 ${isConnected ? 'bg-emerald-500' : 'bg-slate-600'} border-2 border-slate-950 rounded-full animate-pulse`} />
+            <span className={`absolute -bottom-1 -right-1 w-4 h-4 ${isConnected ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'bg-slate-600'} border-2 border-slate-950 rounded-full animate-pulse`} />
           </div>
 
           <div>
@@ -47,8 +47,8 @@ export default function DashboardHeader({
               <span>•</span>
               <span>Tiền sử: <strong className="text-amber-300">Rối loạn nhịp tim / Nguy cơ té ngã</strong></span>
               <span>•</span>
-              <span className={isConnected ? "text-emerald-400 font-mono" : "text-slate-500 font-mono"}>
-                SafeWatch #{isConnected ? "01 Online" : "01 Offline"}
+              <span className={isConnected ? "text-emerald-400 font-mono font-bold" : "text-slate-500 font-mono"}>
+                SafeWatch #{isConnected ? "01 Online (10Hz)" : "01 Offline"}
               </span>
             </div>
           </div>
@@ -57,30 +57,30 @@ export default function DashboardHeader({
         {/* Live Device Status & Actions */}
         <div className="flex flex-wrap items-center gap-3">
           
-          {/* Watch Status Pill with Live BPM and SpO2 */}
+          {/* Watch Status Pill with Clean Color Transitions */}
           <div className="glass-panel px-4 py-2 rounded-2xl flex items-center space-x-3 text-xs border border-slate-700/80 font-mono">
-            <div className="flex items-center space-x-1 text-emerald-400">
+            <div className={`flex items-center space-x-1 ${isConnected ? 'text-emerald-400' : 'text-slate-400'}`}>
               <Wifi className="w-4 h-4" />
               <span>{currentRssi} dBm</span>
             </div>
 
             <span className="text-slate-700">|</span>
 
-            <div className="flex items-center space-x-1 text-cyan-400">
+            <div className={`flex items-center space-x-1 ${isConnected ? 'text-cyan-400' : 'text-slate-400'}`}>
               <Battery className="w-4 h-4" />
               <span>{currentBattery}% Pin</span>
             </div>
 
             <span className="text-slate-700">|</span>
 
-            <div className="flex items-center space-x-1 text-rose-400">
-              <HeartPulse className={`w-4 h-4 ${currentBpm > 0 ? 'animate-bounce' : ''}`} />
+            <div className={`flex items-center space-x-1 ${currentBpm > 0 ? 'text-rose-400' : 'text-slate-400'}`}>
+              <HeartPulse className={`w-4 h-4 ${currentBpm > 0 ? 'animate-bounce text-rose-400' : 'text-slate-400'}`} />
               <span className="font-bold">{currentBpm} BPM</span>
             </div>
 
             <span className="text-slate-700">|</span>
 
-            <div className="flex items-center space-x-1 text-cyan-300">
+            <div className={`flex items-center space-x-1 ${currentSpo2 > 0 ? 'text-cyan-300' : 'text-slate-400'}`}>
               <Wind className="w-4 h-4" />
               <span className="font-bold">{currentSpo2}% SpO2</span>
             </div>

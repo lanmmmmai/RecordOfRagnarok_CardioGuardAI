@@ -50,7 +50,7 @@ export default function VitalCard({ isConnected, rawTelemetry }) {
       unit: "SpO2",
       status: spo2Status,
       statusColor: rawSpo2 === 0 ? "text-slate-400 border-slate-700 bg-slate-800/40" : (rawSpo2 >= 96 ? "text-cyan-400 border-cyan-500/40 bg-cyan-500/15" : "text-amber-400 border-amber-500/40 bg-amber-500/15"),
-      subInfo: `Tưới máu PI: ${perfusionVal}% | 25Hz Maxim`,
+      subInfo: `Tưới máu PI: ${perfusionVal}%`,
       icon: Wind,
       badgeBorder: "border-cyan-500/30 hover:border-cyan-400/60 shadow-cyan-500/5",
       iconColor: "text-cyan-400 bg-cyan-500/10"
@@ -61,7 +61,7 @@ export default function VitalCard({ isConnected, rawTelemetry }) {
       unit: voltageVal,
       status: isConnected ? (rawTelemetry?.charging ? "ĐANG SẠC PIN" : "PIN HOẠT ĐỘNG") : "CHƯA KẾT NỐI",
       statusColor: isConnected ? "text-emerald-400 border-emerald-500/40 bg-emerald-500/15" : "text-slate-400 border-slate-700 bg-slate-800/40",
-      subInfo: `Hardware IMU/PPG: ${isConnected && rawTelemetry?.sensors?.imuOk ? 'OK' : '0'}`,
+      subInfo: `Hardware: ${isConnected && rawTelemetry?.sensors?.imuOk ? 'IMU/PPG OK' : '0'}`,
       icon: TrendingUp,
       badgeBorder: "border-emerald-500/30 hover:border-emerald-400/60 shadow-emerald-500/5",
       iconColor: "text-emerald-400 bg-emerald-500/10"
@@ -72,7 +72,7 @@ export default function VitalCard({ isConnected, rawTelemetry }) {
       unit: "Risk Score",
       status: isConnected ? (rawTelemetry?.fallState === 0 ? "AN TOÀN" : "CẢNH BÁO TÉ NGÃ!") : "CHƯA KẾT NỐI",
       statusColor: isConnected && rawTelemetry?.fallState > 0 ? "text-rose-400 border-rose-500/50 bg-rose-500/20" : "text-slate-400 border-slate-700 bg-slate-800/40",
-      subInfo: `FPS Stream: ${isConnected ? '10Hz' : '0Hz'} | RSSI: ${rawTelemetry?.rssi || 0}dBm`,
+      subInfo: `10Hz Stream | ${isConnected ? (rawTelemetry?.rssi || 0) + ' dBm' : '0 dBm'}`,
       icon: ShieldCheck,
       badgeBorder: "border-amber-400/30 hover:border-amber-300/60 shadow-amber-400/5",
       iconColor: "text-amber-300 bg-amber-400/10"
