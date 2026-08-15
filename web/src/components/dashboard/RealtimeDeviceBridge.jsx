@@ -87,7 +87,7 @@ export default function RealtimeDeviceBridge({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
         <div className="flex items-center space-x-2">
           <Radio className="w-5 h-5 text-cyan-400 animate-pulse" />
-          <h3 className="text-base font-bold text-white">KẾT NỐI ENROLL WATCH THỜI GIAN THỰC</h3>
+          <h3 className="text-base font-bold text-white">KẾT NỐI SAFEWATCH THỜI GIAN THỰC</h3>
           <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-mono text-[11px] font-bold border border-emerald-500/30">
             Realtime Feed
           </span>
@@ -175,7 +175,7 @@ export default function RealtimeDeviceBridge({
               </div>
               <div>
                 <h3 className="text-base font-bold text-white leading-tight">
-                  KẾT NỐI ENROLL WATCH THÀNH CÔNG
+                  KẾT NỐI SAFEWATCH THÀNH CÔNG
                 </h3>
                 <p className="text-[11px] text-slate-400">
                   Phần cứng &amp; Kênh Telegram SOS sẵn sàng
@@ -207,7 +207,7 @@ export default function RealtimeDeviceBridge({
               </div>
 
               <div className="p-2 glass-panel rounded-xl border border-slate-800/60">
-                <span className="text-[10px] text-slate-500 block">🔋 PIN ENROLL WATCH</span>
+                <span className="text-[10px] text-slate-500 block">🔋 PIN SAFEWATCH</span>
                 <span className="font-bold text-cyan-400 text-[11px] block">{testResultModal.batteryLevel}</span>
               </div>
 

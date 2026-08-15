@@ -182,7 +182,7 @@ export default function Watch3DCanvas({ onTriggerSOS, simulatedBpm = 76 }) {
     };
   }, [simulatedBpm, activeScreenTab, isRotating]);
 
-  // Screen texture rendering for "ENROLL WATCH"
+  // Screen texture rendering for "SAFEWATCH"
   const createScreenTexture = (bpm, tab) => {
     const canvas = document.createElement('canvas');
     canvas.width = 512;
@@ -203,11 +203,11 @@ export default function Watch3DCanvas({ onTriggerSOS, simulatedBpm = 76 }) {
     ctx.arc(256, 256, 245, 0, Math.PI * 2);
     ctx.stroke();
 
-    // 1. ENROLL WATCH Title
+    // 1. SAFEWATCH Title
     ctx.fillStyle = '#00f2fe';
     ctx.font = 'bold 24px Inter, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('ĐỒNG HỒ ENROLL', 256, 75);
+    ctx.fillText('ĐỒNG HỒ SAFEWATCH', 256, 75);
 
     // Subtitle
     ctx.fillStyle = '#94a3b8';

@@ -62,7 +62,7 @@ export default function Navbar({ activeTab, setActiveTab, onTriggerSOS, simulate
           {/* Live Device Status */}
           <div className="hidden lg:flex items-center space-x-2 px-3 py-1.5 rounded-xl glass-panel text-xs text-slate-300">
             <Wifi className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-            <span className="font-mono text-emerald-400">ĐỒNG HỒ ENROLL ONLINE</span>
+            <span className="font-mono text-emerald-400">ĐỒNG HỒ SAFEWATCH ONLINE</span>
             <span className="text-slate-600">|</span>
             <span className="text-rose-400 font-mono flex items-center space-x-1">
               <Activity className="w-3.5 h-3.5 inline animate-bounce" />
