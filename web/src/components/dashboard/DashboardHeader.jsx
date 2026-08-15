@@ -1,15 +1,16 @@
 import React from 'react';
-import { Wifi, Battery, AlertTriangle, Download, HeartPulse } from 'lucide-react';
+import { Wifi, Battery, AlertTriangle, Download, HeartPulse, Wind } from 'lucide-react';
 
 export default function DashboardHeader({
   userProfile,
-  liveBpm,
   isConnected,
   rawTelemetry,
   onTriggerSOS,
   onExportReport
 }) {
-  const currentBpm = isConnected && rawTelemetry?.skinContact && rawTelemetry?.pulse > 0 ? rawTelemetry.pulse : 0;
+  const hasSkin = Boolean(isConnected && rawTelemetry?.skinContact);
+  const currentBpm = hasSkin && rawTelemetry?.pulse > 0 ? rawTelemetry.pulse : 0;
+  const currentSpo2 = hasSkin && rawTelemetry?.spo2Valid && rawTelemetry?.spo2 > 0 ? rawTelemetry.spo2 : 0;
   const currentBattery = isConnected && rawTelemetry?.battery !== undefined ? rawTelemetry.battery : 0;
   const currentRssi = isConnected && rawTelemetry?.rssi !== undefined ? rawTelemetry.rssi : 0;
 
@@ -56,7 +57,7 @@ export default function DashboardHeader({
         {/* Live Device Status & Actions */}
         <div className="flex flex-wrap items-center gap-3">
           
-          {/* Watch Status Pill */}
+          {/* Watch Status Pill with Live BPM and SpO2 */}
           <div className="glass-panel px-4 py-2 rounded-2xl flex items-center space-x-3 text-xs border border-slate-700/80 font-mono">
             <div className="flex items-center space-x-1 text-emerald-400">
               <Wifi className="w-4 h-4" />
@@ -73,8 +74,15 @@ export default function DashboardHeader({
             <span className="text-slate-700">|</span>
 
             <div className="flex items-center space-x-1 text-rose-400">
-              <HeartPulse className="w-4 h-4 animate-bounce" />
+              <HeartPulse className={`w-4 h-4 ${currentBpm > 0 ? 'animate-bounce' : ''}`} />
               <span className="font-bold">{currentBpm} BPM</span>
+            </div>
+
+            <span className="text-slate-700">|</span>
+
+            <div className="flex items-center space-x-1 text-cyan-300">
+              <Wind className="w-4 h-4" />
+              <span className="font-bold">{currentSpo2}% SpO2</span>
             </div>
           </div>
 

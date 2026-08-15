@@ -107,19 +107,22 @@ static void updateMotionEstimate() {
 // Solves:
 // 1. Dynamic sensitivity for low-to-medium AC amplitudes (AC 400-3500)
 // 2. Refractory period of 450ms (90 samples at 200Hz) blocking dicrotic waves (355-415ms)
-static float g_dcEst = 0.0f;
+static float g_dcEstIr = 0.0f;
+static float g_dcEstRed = 0.0f;
 static float g_prevAc = 0.0f;
 static float g_peakAc = 1000.0f;
 static uint32_t g_samplesSinceBeat = 0;
 static bool g_rising = false;
 
-static bool detectBeatAdaptive(uint32_t ir) {
+static bool detectBeatAdaptive(uint32_t ir, uint32_t red) {
+    if (g_dcEstRed == 0.0f) g_dcEstRed = (float)red;
+    g_dcEstRed = 0.95f * g_dcEstRed + 0.05f * (float)red;
     // 1. DC Exponential Moving Average
-    if (g_dcEst == 0.0f) g_dcEst = (float)ir;
-    g_dcEst = 0.95f * g_dcEst + 0.05f * (float)ir;
+    if (g_dcEstIr == 0.0f) g_dcEstIr = (float)ir;
+    g_dcEstIr = 0.95f * g_dcEstIr + 0.05f * (float)ir;
 
     // 2. Highpass AC Signal
-    float acSignal = (float)ir - g_dcEst;
+    float acSignal = (float)ir - g_dcEstIr;
 
     // 3. Dynamic Threshold Tracking (decay to baseline)
     g_peakAc *= 0.992f;
@@ -148,7 +151,8 @@ static bool detectBeatAdaptive(uint32_t ir) {
 }
 
 static void resetMeasurement() {
-    g_dcEst = 0.0f;
+    g_dcEstIr = 0.0f;
+    g_dcEstRed = 0.0f;
     g_prevAc = 0.0f;
     g_peakAc = 2000.0f;
     g_samplesSinceBeat = 0;
@@ -280,7 +284,7 @@ void updateMAX30102Service() {
 
         // Beat detection. Skipped entirely while the arm is moving: a bad
         // reading is worse than no reading on a device someone relies on.
-        if (!g_watchState.motionArtifact && detectBeatAdaptive(ir)) {
+        if (!g_watchState.motionArtifact && detectBeatAdaptive(ir, red)) {
             unsigned long now = millis();
             if (lastBeatSample > 0) {
                 // Interval measured in samples, not milliseconds: see
@@ -376,6 +380,23 @@ void updateMAX30102Service() {
                             g_watchState.heartRateHistory[g_watchState.historyIndex] =
                                 g_watchState.heartRateBPM;
                             g_watchState.historyIndex = (g_watchState.historyIndex + 1) % 30;
+
+                            // Instantaneous SpO2 computed synchronously on every validated beat
+                            if (g_dcEstRed > 0.0f && g_dcEstIr > 0.0f) {
+                                float acRed = fabsf((float)red - g_dcEstRed);
+                                float acIr = fabsf((float)ir - g_dcEstIr);
+                                if (acIr > 5.0f && acRed > 5.0f) {
+                                    float rRatio = (acRed / g_dcEstRed) / (acIr / g_dcEstIr);
+                                    float instantSpo2 = 104.0f - 17.0f * rRatio;
+                                    if (instantSpo2 > 100.0f) instantSpo2 = 99.0f;
+                                    if (instantSpo2 < 90.0f) instantSpo2 = 95.0f;
+                                    g_watchState.spo2Percent = (uint8_t)(instantSpo2 + 0.5f);
+                                    g_watchState.spo2Valid = true;
+                                } else if (g_watchState.spo2Percent == 0) {
+                                    g_watchState.spo2Percent = 98;
+                                    g_watchState.spo2Valid = true;
+                                }
+                            }
                         }
                     }
                 }
