@@ -170,9 +170,8 @@ void updateMAX30102Service() {
                                     }
                                 }
                             }
-                            uint16_t sum = 0;
-                            for (uint8_t i = 0; i < valid; i++) sum += temp[i];
-                            g_watchState.heartRateBPM = sum / valid; // Median of 4 samples
+                            // True Median Filter selection from sorted temp array
+                            g_watchState.heartRateBPM = temp[valid / 2];
                             g_watchState.hrValid = true;
                             g_watchState.heartRateHistory[g_watchState.historyIndex] =
                                 g_watchState.heartRateBPM;
