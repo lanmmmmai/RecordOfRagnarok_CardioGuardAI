@@ -8,57 +8,79 @@ void renderHeartRateScreen(TFT_eSprite& spr) {
     // Header Title
     vnFont(spr, VN_MEDIUM);
     spr.setTextColor(UI_COLOR_HEART, UI_COLOR_BLACK);
-    spr.drawString("NHỊP TIM", SCREEN_CENTER_X, 26, 2);
+    spr.drawString("NHỊP TIM & SpO2", SCREEN_CENTER_X, 22, 2);
 
-    // Heart Icon Symbol
-    spr.fillCircle(SCREEN_CENTER_X - 9, 48, 7, UI_COLOR_HEART);
-    spr.fillCircle(SCREEN_CENTER_X + 9, 48, 7, UI_COLOR_HEART);
-    spr.fillTriangle(SCREEN_CENTER_X - 15, 50, SCREEN_CENTER_X + 15, 50, SCREEN_CENTER_X, 66, UI_COLOR_HEART);
+    // Dual Icons (Heart + Oxygen)
+    spr.fillCircle(SCREEN_CENTER_X - 18, 40, 6, UI_COLOR_HEART);
+    spr.fillCircle(SCREEN_CENTER_X - 6, 40, 6, UI_COLOR_HEART);
+    spr.fillTriangle(SCREEN_CENTER_X - 23, 42, SCREEN_CENTER_X - 1, 42, SCREEN_CENTER_X - 12, 54, UI_COLOR_HEART);
+
+    spr.drawCircle(SCREEN_CENTER_X + 12, 46, 7, UI_COLOR_SPO2);
 
     char bpmBuf[16];
+    char spo2Buf[16];
+
     if (!g_watchState.hrSensorOk) {
         spr.setTextColor(UI_COLOR_CRITICAL, UI_COLOR_BLACK);
         vnFont(spr, VN_LARGE);
-        spr.drawString("--", SCREEN_CENTER_X, 90, 4);
+        spr.drawString("--", SCREEN_CENTER_X, 82, 4);
         vnFont(spr, VN_MEDIUM);
-        spr.drawString("LỖI CẢM BIẾN", SCREEN_CENTER_X, 118, 2);
-        vnFont(spr, VN_SMALL);
-        spr.setTextColor(UI_COLOR_SECONDARY, UI_COLOR_BLACK);
-        spr.drawString("Kiểm tra dây MAX30102", SCREEN_CENTER_X, 140, 1);
-    } else if (g_watchState.hrValid) {
+        spr.drawString("LỖI CẢM BIẾN", SCREEN_CENTER_X, 114, 2);
+    } else if (g_watchState.hrValid || g_watchState.spo2Valid) {
+        // Render BPM
         snprintf(bpmBuf, sizeof(bpmBuf), "%d", g_watchState.heartRateBPM);
         vnFont(spr, VN_LARGE);
         spr.setTextColor(UI_COLOR_WHITE, UI_COLOR_BLACK);
-        spr.drawString(bpmBuf, SCREEN_CENTER_X, 90, 4);
+        spr.drawString(bpmBuf, 78, 80, 4);
 
+        vnFont(spr, VN_SMALL);
+        spr.setTextColor(UI_COLOR_HEART, UI_COLOR_BLACK);
+        spr.drawString("BPM", 78, 106, 1);
+
+        // Render SpO2
+        if (g_watchState.spo2Valid && g_watchState.spo2Percent > 0) {
+            snprintf(spo2Buf, sizeof(spo2Buf), "%d%%", g_watchState.spo2Percent);
+        } else {
+            snprintf(spo2Buf, sizeof(spo2Buf), "--%%");
+        }
+        vnFont(spr, VN_LARGE);
+        spr.setTextColor(UI_COLOR_SPO2, UI_COLOR_BLACK);
+        spr.drawString(spo2Buf, 162, 80, 4);
+
+        vnFont(spr, VN_SMALL);
+        spr.setTextColor(UI_COLOR_SPO2, UI_COLOR_BLACK);
+        spr.drawString("SpO2", 162, 106, 1);
+
+        // Clinical Evaluation
         vnFont(spr, VN_MEDIUM);
-        spr.setTextColor(UI_COLOR_SECONDARY, UI_COLOR_BLACK);
-        spr.drawString("BPM", SCREEN_CENTER_X, 118, 2);
-
         if (g_watchState.heartRateBPM > 100) {
             spr.setTextColor(UI_COLOR_WARNING, UI_COLOR_BLACK);
-            spr.drawString("HƠI CAO", SCREEN_CENTER_X, 140, 2);
-        } else if (g_watchState.heartRateBPM < 60) {
+            spr.drawString("NHỊP HƠI NHANH", SCREEN_CENTER_X, 130, 2);
+        } else if (g_watchState.heartRateBPM < 55 && g_watchState.heartRateBPM > 0) {
             spr.setTextColor(UI_COLOR_BLUE, UI_COLOR_BLACK);
-            spr.drawString("HƠI THẤP", SCREEN_CENTER_X, 140, 2);
+            spr.drawString("NHỊP HƠI CHẬM", SCREEN_CENTER_X, 130, 2);
         } else {
             spr.setTextColor(UI_COLOR_NORMAL, UI_COLOR_BLACK);
-            spr.drawString("BÌNH THƯỜNG", SCREEN_CENTER_X, 140, 2);
+            spr.drawString("CHỈ SỐ BÌNH THƯỜNG", SCREEN_CENTER_X, 130, 2);
         }
     } else {
         vnFont(spr, VN_LARGE);
         spr.setTextColor(UI_COLOR_SECONDARY, UI_COLOR_BLACK);
-        spr.drawString("--", SCREEN_CENTER_X, 90, 4);
-        vnFont(spr, VN_MEDIUM);
-        spr.drawString("BPM", SCREEN_CENTER_X, 118, 2);
+        spr.drawString("--", 78, 80, 4);
+        spr.drawString("--%", 162, 80, 4);
 
+        vnFont(spr, VN_SMALL);
+        spr.drawString("BPM", 78, 106, 1);
+        spr.drawString("SpO2", 162, 106, 1);
+
+        vnFont(spr, VN_MEDIUM);
         spr.setTextColor(UI_COLOR_WARNING, UI_COLOR_BLACK);
         if (g_watchState.motionArtifact) {
-            spr.drawString("GIỮ YÊN TAY", SCREEN_CENTER_X, 140, 2);
+            spr.drawString("GIỮ YÊN TAY", SCREEN_CENTER_X, 130, 2);
         } else if (!g_watchState.skinContact) {
-            spr.drawString("ĐEO CHẶT HƠN", SCREEN_CENTER_X, 140, 2);
+            spr.drawString("CHƯA CHẠM DA", SCREEN_CENTER_X, 130, 2);
         } else {
-            spr.drawString("ĐANG ĐO...", SCREEN_CENTER_X, 140, 2);
+            spr.drawString("ĐANG TÍNH...", SCREEN_CENTER_X, 130, 2);
         }
     }
 
@@ -69,19 +91,19 @@ void renderHeartRateScreen(TFT_eSprite& spr) {
         uint16_t qcol = g_watchState.signalQuality >= 60 ? UI_COLOR_NORMAL
                       : g_watchState.signalQuality >= 30 ? UI_COLOR_WARNING
                                                          : UI_COLOR_CRITICAL;
-        spr.drawRoundRect(65, 156, 110, 6, 3, UI_COLOR_BEZEL);
-        if (qw > 2) spr.fillRoundRect(65, 156, qw, 6, 3, qcol);
+        spr.drawRoundRect(65, 150, 110, 6, 3, UI_COLOR_BEZEL);
+        if (qw > 2) spr.fillRoundRect(65, 150, qw, 6, 3, qcol);
         
         vnFont(spr, VN_SMALL);
         spr.setTextColor(UI_COLOR_SECONDARY, UI_COLOR_BLACK);
-        char qBuf[24];
-        snprintf(qBuf, sizeof(qBuf), "Tín hiệu %d%%", g_watchState.signalQuality);
-        spr.drawString(qBuf, SCREEN_CENTER_X, 172, 1);
+        char qBuf[32];
+        snprintf(qBuf, sizeof(qBuf), "Chất lượng SQI: %d%%", g_watchState.signalQuality);
+        spr.drawString(qBuf, SCREEN_CENTER_X, 166, 1);
     }
 
     // Mini Trend Line Chart
     int chartX = 65;
-    int chartY = 184;
+    int chartY = 178;
     int chartW = 110;
     int chartH = 14;
 
@@ -103,5 +125,5 @@ void renderHeartRateScreen(TFT_eSprite& spr) {
     // Back Footer
     vnFont(spr, VN_SMALL);
     spr.setTextColor(UI_COLOR_SECONDARY, UI_COLOR_BLACK);
-    spr.drawString("← Trang chủ", SCREEN_CENTER_X, 212, 1);
+    spr.drawString("← Trang chủ", SCREEN_CENTER_X, 210, 1);
 }
