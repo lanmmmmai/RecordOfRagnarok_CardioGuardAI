@@ -24,7 +24,28 @@
 // steady rate keeps its thresholds meaningful, and the PPG motion estimate
 // needs one entry per genuine IMU reading rather than per loop iteration.
 static const unsigned long SENSOR_PERIOD_MS = 20;
+
+// Rendering and the sensor tick share this one thread, so a frame that lands
+// mid-tick pushes that tick back by however long the LCD write took. At 33 ms
+// the two periods collide almost every time and the sensor tick settles at
+// ~48 ms -- measured, not estimated: a capture showed median 48 ms with p95 at
+// 49 ms, and a spread that tight is two fixed-cost jobs queueing behind each
+// other rather than serial backpressure, which would jitter.
+//
+// That matters because the fall detector reads a 235 Hz sensor through this
+// tick. At 48 ms it sees 12.9 ms out of every 48 and is blind for the other
+// 35, so a sharp impact peak -- the exact thing it exists to catch -- is more
+// likely to land in the gap than not, and every recorded peak reads low by an
+// unknown amount.
+//
+// While raw logging is on, the capture is the product and the UI is not, so
+// frames give way to the tick. 10 FPS is still legible to anyone watching the
+// watch during a recording.
+#if FALL_LOG_RAW_SAMPLES
+static const unsigned long RENDER_PERIOD_MS = 100;  // 10 FPS while capturing
+#else
 static const unsigned long RENDER_PERIOD_MS = 33;   // ~30 FPS
+#endif
 
 static unsigned long lastSensorTick = 0;
 static unsigned long lastRenderTick = 0;
@@ -139,6 +160,12 @@ void loop() {
     // Touch is interrupt-gated and cheap, so it is serviced every pass to keep
     // the UI feeling immediate.
     updateCST816SService();
+
+    // Every pass, because the IMU runs at 235 Hz and the tick at 50 Hz. The
+    // call is a timestamp comparison until a new sensor sample is actually due,
+    // so the cost of asking often is small and the peak of each tick gets found
+    // no matter where in the loop the impact lands.
+    pollQMI8658Service();
 
     if (now - lastSensorTick >= SENSOR_PERIOD_MS) {
         lastSensorTick = now;

@@ -81,56 +81,83 @@ static inline uint32_t magSquared(const int16_t s[6]) {
     return (uint32_t)(x * x) + (uint32_t)(y * y) + (uint32_t)(z * z);
 }
 
+// Running peak across the current tick, written by pollQMI8658Service() and
+// consumed -- then cleared -- by updateQMI8658Service().
+static int16_t peakSample[6];
+static uint32_t peakMag = 0;
+static bool havePeak = false;
+static uint32_t lastPollMicros = 0;
+static bool busError = false;
+
+void pollQMI8658Service() {
+    if (!qmiDetected) return;
+
+    // Sample on the sensor's schedule, not the loop's, and never block waiting
+    // for it. Each call asks one question -- has a new sensor sample had time
+    // to arrive? -- and returns immediately if not.
+    //
+    // The previous version answered the same need with delayMicroseconds():
+    // four reads spaced 4300 us apart, all inside one tick. That spacing was
+    // right, but the waiting was not. delayMicroseconds() does not yield, so
+    // 12.9 ms of every tick was the CPU standing still, and the tick stretched
+    // to a measured 48 ms. The reads then covered 12.9 ms out of 48 and the
+    // detector was blind for the other 35 -- a wider gap than the plain 20 ms
+    // it was introduced to close.
+    //
+    // Comparing against micros() instead costs a subtraction. The loop keeps
+    // running, the IMU still gets read every 4.3 ms, and the peak-holding that
+    // motivated the original change is preserved exactly.
+    uint32_t nowUs = micros();
+    // Unsigned arithmetic, so the 71-minute micros() rollover subtracts
+    // correctly without a special case.
+    if (havePeak && (nowUs - lastPollMicros) < QMI_SAMPLE_GAP_US) return;
+    lastPollMicros = nowUs;
+
+    int16_t s[6];
+    if (!readSample(s)) {
+        busError = true;
+        return;
+    }
+    busError = false;
+
+    // Keep the largest sample of the tick. A wrist hitting the floor peaks for
+    // only a few milliseconds; whichever single reading happened to line up
+    // with the tick boundary would be a random point on the slope, always low
+    // by an amount that changed every time. Thresholds calibrated against that
+    // are calibrated against noise.
+    //
+    // Magnitude decides the winner and the whole 6-axis sample travels
+    // together -- pairing the accelerometer from one instant with the gyroscope
+    // from another would describe a motion that never happened.
+    uint32_t m = magSquared(s);
+    if (!havePeak || m > peakMag) {
+        peakMag = m;
+        memcpy(peakSample, s, sizeof(peakSample));
+        havePeak = true;
+    }
+}
+
 void updateQMI8658Service() {
     if (!qmiDetected) return;
 
-    // Take several samples per tick and keep the strongest, instead of whatever
-    // single reading happened to line up with the 20 ms loop.
-    //
-    // A wrist hitting the floor peaks for only a few milliseconds. Sampling
-    // once every 20 ms, the odds of landing on that peak are poor, so the
-    // recorded impact was a point somewhere on the slope -- always lower than
-    // the truth, and lower by an amount that changed every time. Thresholds
-    // calibrated against that are calibrated against noise.
-    //
-    // Keeping the largest of QMI_SAMPLES_PER_TICK readings bounds the error:
-    // the peak can still be missed, but only by the gap between samples rather
-    // than the whole 20 ms window. Magnitude decides which sample wins, and the
-    // whole 6-axis sample is kept together -- mixing the accelerometer from one
-    // instant with the gyroscope from another would describe a motion that
-    // never happened.
-    int16_t best[6];
-    uint32_t bestMag = 0;
-    bool haveAny = false;
-
-    for (uint8_t i = 0; i < QMI_SAMPLES_PER_TICK; i++) {
-        int16_t s[6];
-        if (!readSample(s)) continue;
-
-        uint32_t m = magSquared(s);
-        if (!haveAny || m > bestMag) {
-            bestMag = m;
-            memcpy(best, s, sizeof(best));
-            haveAny = true;
-        }
-
-        // Space the reads out so they fall on different sensor samples. At
-        // 235 Hz a new one arrives every 4.3 ms; without this the burst would
-        // finish inside a single sensor period and re-read one value.
-        if (i + 1 < QMI_SAMPLES_PER_TICK) delayMicroseconds(QMI_SAMPLE_GAP_US);
-    }
-
-    if (!haveAny) {
-        g_watchState.imuOk = false;
+    // Nothing arrived this tick. Only a bus error is an outage: an empty tick
+    // right after boot, before the first poll, is not.
+    if (!havePeak) {
+        if (busError) g_watchState.imuOk = false;
         return;
     }
 
-    g_watchState.accX  = best[0];
-    g_watchState.accY  = best[1];
-    g_watchState.accZ  = best[2];
-    g_watchState.gyroX = best[3];
-    g_watchState.gyroY = best[4];
-    g_watchState.gyroZ = best[5];
+    g_watchState.accX  = peakSample[0];
+    g_watchState.accY  = peakSample[1];
+    g_watchState.accZ  = peakSample[2];
+    g_watchState.gyroX = peakSample[3];
+    g_watchState.gyroY = peakSample[4];
+    g_watchState.gyroZ = peakSample[5];
 
     g_watchState.imuOk = true;
+
+    // Start a fresh peak for the next tick. Without this the tick would report
+    // the largest sample since boot forever after the first impact.
+    havePeak = false;
+    peakMag = 0;
 }

@@ -201,19 +201,18 @@
 // silently shifts.
 #define FALL_ACCEL_LSB_PER_G      4096.0f
 
-// How many times updateQMI8658Service() reads the sensor per 20 ms tick,
-// keeping the sample with the largest acceleration magnitude.
+// Minimum spacing between IMU reads, in microseconds. The sensor runs at
+// 235 Hz -- a new sample every 4.3 ms -- while the sensor tick is 20 ms.
+// Reading once per tick would discard three samples out of four, and the one
+// kept would be chosen by loop timing rather than by what the wrist was doing.
+// A floor impact lasts a few milliseconds, so it usually fell in a discarded
+// sample and the recorded peak was a random point on the slope.
 //
-// The sensor runs at 235 Hz -- a new sample every 4.3 ms -- while the loop
-// ticks every 20 ms. Reading once per tick therefore discards three samples out
-// of four, and the one kept is chosen by loop timing rather than by what the
-// wrist was doing. A floor impact lasts a few milliseconds, so it usually fell
-// in a discarded sample and the recorded peak was a random point on the slope.
-//
-// Four reads at 4300 us cover 12.9 ms of the 20 ms tick. Cost is roughly
-// 4 x 12 bytes over I2C at 400 kHz plus the waits, well inside the tick budget
-// shared with the 200 Hz PPG sampling and the display.
-#define QMI_SAMPLES_PER_TICK      4
+// pollQMI8658Service() runs every pass of loop() and reads whenever this much
+// time has passed, holding the largest sample until the tick collects it. It
+// compares against micros() rather than waiting: an earlier version spaced the
+// reads with delayMicroseconds() inside a single tick, which cost 12.9 ms of
+// stalled CPU per tick and stretched the tick itself to a measured 48 ms.
 #define QMI_SAMPLE_GAP_US         4300
 
 // Phase 1 -- free fall. Below this total acceleration the wrist is unsupported.
