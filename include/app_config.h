@@ -475,9 +475,12 @@
 // writes. Turn it on for dedicated collection sessions, and turn it back off
 // afterwards. Lines are prefixed FALLCSV; the columns are
 //   millis, accX, accY, accZ, gyroX, gyroY, gyroZ, totalG, fallState
-// Currently ON: a data-collection session is in progress. Set back to 0 once
-// the fall recordings are done.
-#define FALL_LOG_RAW_SAMPLES      1
+// Currently OFF. The 2026-08-16 negative session is captured and analysed;
+// log_negative_10min.txt holds it. Note that turning this on also compiles
+// renderUI() out of main.cpp, so the display goes dark and the fall alert's
+// 15 s cancel button goes with it -- which is why alert_dispatcher.cpp
+// suppresses sending entirely while it is 1.
+#define FALL_LOG_RAW_SAMPLES      0
 
 // Temporary instrumentation for the tick budget. Prints a TICKPROF line every
 // 2 s giving the worst single duration each job in loop() has cost since the
