@@ -22,7 +22,7 @@ Mỗi dòng "Đang chạy" đều trỏ được tới file cụ thể.
 | Gửi Telegram + hàng đợi NVS 8 sự kiện + retry 3 lần | ✅ Đang chạy | [alert_dispatcher.cpp](src/connectivity/alert_dispatcher.cpp) |
 | BLE GATT: vitals / fall / status / command | ✅ Đang chạy | [ble_service.cpp](src/connectivity/ble_service.cpp) · [BLE_PROTOCOL.md](BLE_PROTOCOL.md) |
 | Đo nhịp tim + SpO₂ (PPG) | ✅ Đang chạy | [max30102_service.cpp](src/sensors/max30102_service.cpp) |
-| Đo pin qua ADC | ✅ Đang chạy | [battery_monitor.cpp](src/sensors/battery_monitor.cpp) |
+| Đo pin qua ADC — đường cong LiPo gấp khúc + phát hiện sạc theo xu hướng | ✅ Đang chạy | [battery_monitor.cpp](src/sensors/battery_monitor.cpp) |
 | **Hiệu chuẩn ngưỡng té ngã** | ⚠️ Chưa — toàn số phỏng đoán | [app_config.h §Fall](include/app_config.h) |
 | **DSP tầng 4** — trung vị + chặn 15 BPM/nhịp + van thoát | ✅ Đang chạy | [max30102_service.cpp](src/sensors/max30102_service.cpp) |
 | **DSP tầng 5** (Kalman + chặn hiển thị theo SQI) | ❌ Chưa triển khai | Kế hoạch: SPEC §11 |

@@ -468,6 +468,47 @@ Tài liệu Waveshare **không ghi** chân đo pin lẫn tỉ số phân áp, n�
 **Cách tự kiểm chứng:** đo vôn kế qua 2 chân BAT, so với số `raw ... mV` trong dòng `[WATCH LOG]`.
 Nếu vôn kế đọc $V$ và log đọc $m$ mV thì tỉ số thật là $V / (m/1000)$.
 
+### Quy đổi Điện áp → Phần trăm — đường cong gấp khúc
+
+Pin LiPo **không** xả tuyến tính. Nó tụt nhanh từ 4.20 V xuống ~3.90 V, rồi nằm trên một thềm
+phẳng dài 3.90–3.70 V chứa phần lớn dung lượng dùng được, rồi sập đột ngột dưới 3.60 V.
+
+Bản đồ đường thẳng dùng trước đây (`(V − 3.3) / 0.8 × 100`) sai theo **cả hai chiều cùng lúc**:
+đọc thiếu suốt cả vùng thềm, và — chỗ nguy hiểm hơn trên một đồng hồ báo té ngã — vẫn hiện
+~25% ở 3.50 V, lúc pin thật chỉ còn vài phút. Người đeo nhìn thấy một phần tư bình xăng rồi
+đồng hồ tắt.
+
+Nay dùng nội suy gấp khúc qua 6 điểm ([battery_monitor.cpp](src/sensors/battery_monitor.cpp)):
+
+| V | 3.30 | 3.60 | 3.70 | 3.90 | 4.05 | 4.20 |
+|---|---|---|---|---|---|---|
+| % | 0 | 5 | 20 | 60 | 90 | 100 |
+
+> Các điểm này lấy từ đường xả điển hình của LiPo 3.7 V ở tải nhẹ, **chưa đo trên cell thật của
+> thiết bị này**. Mục tiêu không phải chính xác tuyệt đối mà là đúng *hình dạng* — đủ để cảnh báo
+> pin yếu (Giai đoạn 6) bắn ra vào thời điểm còn có ích.
+
+Điện áp được lọc mũ (`BATTERY_FILTER_ALPHA = 0.25`, ~1 phút để ổn định ở chu kỳ 5 s) trước khi
+đưa vào đường cong, nếu không nhiễu ADC làm phần trăm nhảy liên tục.
+
+### Phát hiện Đang sạc — dựa vào **xu hướng**, không dựa vào mức
+
+Board **không có** chân báo trạng thái sạc nối vào GPIO, nên phải suy luận. Cách cũ (`V ≥ 4.15 →
+đang sạc, 100%`) có một lỗ hổng nghiêm trọng khi thử nghiệm:
+
+> **Cắm USB mà không lắp pin** cũng đẩy rail lên trên 4.15 V và trông y hệt pin đầy.
+> Đồng hồ báo 100% vĩnh viễn, và cảnh báo pin yếu **không bao giờ có cơ hội bắn** trên bàn thử.
+
+Dấu hiệu phân biệt là **chiều**, không phải mức: pin đang sạc thì điện áp **leo lên**; rail trần
+không pin thì **đứng yên**. Nên điều kiện là cả hai:
+
+```
+isCharging = (ΔV qua 2 phút ≥ 10 mV)  AND  (V ≥ 4.15)
+```
+
+Khi pin sạc đầy nó ngừng leo → cờ `isCharging` tắt, phần trăm đọc 100% từ đường cong. Đó là mô tả
+trung thực: đồng hồ biết **pin đầy**, chứ không khẳng định **đang có dòng nạp**.
+
 ### Cảnh báo Pin yếu — ❌ CHƯA TRIỂN KHAI
 
 Thiết kế dự kiến (Giai đoạn 6): ngưỡng ≤ 15%, biểu tượng pin nhấp nháy đỏ, gửi **một tin duy nhất** về Telegram Gia đình, cờ chỉ reset khi pin vượt trở lại 20% (chống spam khi pin dao động quanh ngưỡng).
@@ -712,9 +753,44 @@ Còn lại: đo trên người đeo thật để chỉnh `PPG_MAX_BPM_STEP` nế
 
 **4. DSP Tầng 5 chưa tồn tại** (Kalman + chặn hiển thị theo SQI). Xem §3.
 
+**4b. Đồng hồ đỗ vĩnh viễn ở màn hình cảnh báo — ĐÃ SỬA, chưa kiểm chứng.**
+
+Đây là lỗi nghiêm trọng nhất mà đợt rà soát toàn bộ mã nguồn tìm ra, và nó nằm đúng trên
+kịch bản mà thiết bị được sinh ra để phục vụ:
+
+> Sau khi gửi cảnh báo (`FALL_STATE_SENT`) hoặc gửi thất bại (`FALL_STATE_FAILED`), **lối
+> thoát duy nhất là một ngón tay chạm vào mặt kính**. Nhưng người đeo mà thiết bị này nhắm
+> tới, theo đúng định nghĩa, **có thể đang bất tỉnh**. Và trong khi trạng thái chưa về
+> `NORMAL` thì [fall_detector.cpp](src/fall_detection/fall_detector.cpp) **hoàn toàn không
+> quét va chạm mới** — nên **cú ngã thứ hai sẽ không được phát hiện**, còn màn hình thì sáng
+> hết cỡ cho tới khi cạn pin.
+
+Ngoài ra `updateAlertDispatcher()` còn có một lệnh `return` sớm trong nhánh `FAILED`, khiến
+máy trạng thái chỉ tiến lên được nhờ tương tác của con người.
+
+**Đã sửa:** thêm `ALERT_SENT_AUTO_CLEAR_MS = 5 phút` và `ALERT_FAILED_AUTO_CLEAR_MS = 15 phút` —
+hết thời gian thì đồng hồ tự quay về `SCREEN_HOME` và tiếp tục giám sát. Bỏ `return` sớm, nên
+một lần gửi lại thành công phía sau màn hình `FAILED` nay được ghi nhận. **Tin còn trong hàng đợi
+NVS vẫn nằm nguyên ở đó** — xoá màn hình không phải là bỏ tin.
+
+Màn `FAILED` giữ lâu hơn vì "chưa gửi được" là thông tin người đeo phản ứng khác hẳn so với
+"đã gửi", và phía sau nó tiến trình gửi vẫn thử lại mỗi 10 giây.
+
+**5. Cờ "đang sạc" và thang phần trăm pin — ĐÃ SỬA.** Cách cũ suy ra "đang sạc" thuần từ mức
+điện áp ≥ 4.15 V, nên **cắm USB mà không lắp pin cũng đọc ra 100%** — cảnh báo pin yếu sẽ
+không bao giờ bắn trên bàn thử. Nay dùng xu hướng điện áp (leo ≥ 10 mV qua 2 phút) kết hợp với
+mức. Đồng thời thay bản đồ tuyến tính bằng đường cong gấp khúc 6 điểm. Chi tiết: §7.
+
+**6. `getLocalTime()` chặn vòng lặp 1 giây — ĐÃ SỬA.** `syncNTPTimeService()` gọi
+`getLocalTime(&timeinfo, 1000)`, chặn **toàn bộ** vòng lặp hợp tác trong một giây trọn vẹn:
+khoảng 50 mẫu IMU bị bỏ, 30 khung hình rơi, và một phần ba cửa sổ xác nhận té ngã biến mất nếu
+hai việc trùng nhau. Nay `configTime()` bắn đi rồi trả về ngay, và mỗi 5 giây thăm dò một lần
+bằng `getLocalTime(&timeinfo, 0)` (timeout bằng 0). Cờ được đặt lại khi mất Wi-Fi để lần kết nối
+sau còn gửi yêu cầu mới.
+
 ### ⚪ Trung bình / Thấp
 
-**5. Toàn bộ ngưỡng té ngã chưa hiệu chuẩn.** Mọi hằng số ở §4 và thang SQI ở §3 là số phỏng đoán — giá trị
+**7. Toàn bộ ngưỡng té ngã chưa hiệu chuẩn.** Mọi hằng số ở §4 và thang SQI ở §3 là số phỏng đoán — giá trị
 khởi điểm thông dụng, không phải số đo trên thiết bị này với người đeo thật.
 
 Nhóm PPG (`PPG_CONTACT_IR_THRESHOLD = 25000`, `MAX30102_LED_BRIGHTNESS = 0x30`,
@@ -723,26 +799,26 @@ Nhưng chúng được chỉnh theo tiêu chí "hết báo số ảo khi hở s�
 khi đeo — và comment giải thích trong [app_config.h](include/app_config.h) vẫn là bằng chứng đo ở mức LED cũ
 `0x5F`, cần đo lại rồi viết lại.
 
-**6. Tính năng còn thiếu** (Giai đoạn 6 / Phần C):
+**8. Tính năng còn thiếu** (Giai đoạn 6 / Phần C):
 - ❌ Nút SOS vật lý BOOT (GPIO 0) — §6
 - ❌ Cảnh báo pin yếu ≤ 15% — §7
 - ❌ Cảnh báo ngưỡng sinh lý (HR > 130 / < 45, SpO2 < 90) — **phải làm sau Tầng 5**, không thì spam cảnh báo từ số rác
 - ❌ Nhấn giữ HOME 3 giây để SOS — §6
 
-**7. `client.setInsecure()`** ([alert_dispatcher.cpp](src/connectivity/alert_dispatcher.cpp)) — kết nối TLS
+**9. `client.setInsecure()`** ([alert_dispatcher.cpp](src/connectivity/alert_dispatcher.cpp)) — kết nối TLS
 **không xác thực chứng chỉ máy chủ**. Dữ liệu vẫn được mã hoá, nhưng thiết bị không kiểm tra nó đang nói chuyện
 với ai. Trong mạng Wi-Fi nhà thì rủi ro thấp; muốn chặt chẽ thì phải nhúng CA root của Telegram và xử lý việc
 chứng chỉ hết hạn.
 
-**8. 🟠 BLE không có xác thực — ai trong tầm sóng cũng huỷ được cảnh báo thật.** `setSecurityAuth(false,
+**10. 🟠 BLE không có xác thực — ai trong tầm sóng cũng huỷ được cảnh báo thật.** `setSecurityAuth(false,
 false, false)` + `IO_NO_INPUT_OUTPUT` (Just Works, không ghép cặp). Bất kỳ thiết bị nào cũng ghi được vào
 `BLE_CHAR_COMMAND_UUID` để huỷ báo động té ngã đang đếm lùi, hoặc bắn SOS giả. Đây là **đánh đổi có chủ ý**
 (nếu bật bonding thì mỗi lần nạp firmware phải "Forget Device" trên điện thoại), nhưng phải sửa trước khi
 dùng thật. Chi tiết và hướng khắc phục: [BLE_PROTOCOL.md](BLE_PROTOCOL.md) §6.
 
-**9. Toàn bộ §9 TinyML chưa tồn tại.** Không có model, không có `ai_models/`, không có `esp-tflite-micro`.
+**11. Toàn bộ §9 TinyML chưa tồn tại.** Không có model, không có `ai_models/`, không có `esp-tflite-micro`.
 
-**10. Phụ thuộc phần cứng nối dây tay.** MAX30102 là module rời nối bằng dây (§2). Đây là điểm hỏng cơ khí có thật —
+**12. Phụ thuộc phần cứng nối dây tay.** MAX30102 là module rời nối bằng dây (§2). Đây là điểm hỏng cơ khí có thật —
 `checkSensorAlive()` tồn tại chính vì lý do đó.
 
 ### Hai mức nghiệm thu — hãy chọn đúng mức khi phát biểu về dự án

@@ -45,6 +45,20 @@
 // and the log reads m mV, the true ratio is V / (m / 1000).
 #define BATTERY_DIVIDER_RATIO 3.0f
 
+// Smoothing on the pack voltage. The monitor runs every 5 s, so 0.25 settles
+// in roughly a minute -- slow enough to kill ADC jitter, fast enough that the
+// gauge still follows a real change.
+#define BATTERY_FILTER_ALPHA     0.25f
+
+// How far apart two voltage samples must be before their difference is treated
+// as a trend rather than as noise. Two minutes at 5 s per reading.
+#define BATTERY_TREND_WINDOW_MS  120000UL
+
+// Minimum rise across that window to call it charging. A cell on a normal
+// charger gains far more than 10 mV in two minutes; a bare USB rail gains
+// nothing. See the reasoning in battery_monitor.cpp.
+#define BATTERY_CHARGE_RISE_V    0.010f
+
 // ---------------------------------------------------------------------------
 // Heart-rate sensing, wrist-worn
 // ---------------------------------------------------------------------------
@@ -156,6 +170,27 @@
 #define ALERT_HTTP_TIMEOUT_MS 8000
 #define ALERT_MAX_RETRIES     3
 #define ALERT_QUEUE_MAX       8      // events held in NVS while offline
+
+// How long the outcome screen stays up before the watch returns itself to
+// normal monitoring.
+//
+// This exists because the only other way out of FALL_STATE_SENT is a finger on
+// the glass -- and the wearer this device is built for is, by definition,
+// possibly unconscious. Without a timeout the watch parks on the alert screen
+// at full brightness until the battery dies, and detects nothing further:
+// updateFallDetector() only looks for impacts while the state is NORMAL, so a
+// second fall after an unacknowledged first one would go unnoticed.
+//
+// Five minutes is long enough for someone who is conscious to read the screen
+// and understand help was called, short enough that the watch is back to
+// watching well within the window where a follow-up event still matters.
+#define ALERT_SENT_AUTO_CLEAR_MS   300000UL   // 5 minutes
+
+// The failed screen is held longer: the outbox is still retrying every ten
+// seconds behind it, and "not delivered yet" is information the wearer acts on
+// differently from "delivered". It still clears on its own for the same reason
+// as above.
+#define ALERT_FAILED_AUTO_CLEAR_MS 900000UL   // 15 minutes
 
 // How long the phone may be out of BLE range before the watch reports it.
 #define BLE_LEASH_TIMEOUT_MS  60000UL

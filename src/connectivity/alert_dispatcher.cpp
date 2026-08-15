@@ -14,6 +14,11 @@ enum DispatchResult { DISPATCH_IDLE = 0, DISPATCH_INFLIGHT, DISPATCH_DELIVERED, 
 static volatile DispatchResult fallDispatch = DISPATCH_IDLE;
 static bool fallQueued = false;
 
+// millis() at which the watch entered FALL_STATE_SENT or FALL_STATE_FAILED.
+// Zero means it is in neither. Drives the auto-clear that gets the watch back
+// to monitoring without needing the wearer to touch it.
+static unsigned long outcomeSince = 0;
+
 static Preferences prefs;
 static SemaphoreHandle_t storeMutex = nullptr;
 static TaskHandle_t alertTask = nullptr;
@@ -30,8 +35,15 @@ static void storeKey(char* buf, size_t len, uint32_t slot) {
     snprintf(buf, len, "m%lu", (unsigned long)(slot % ALERT_QUEUE_MAX));
 }
 
-static void refreshQueueDepth() {
-    g_watchState.queuedAlerts = prefs.getUChar("count", 0);
+// Publish the outbox depth for the UI and the BLE status packet.
+//
+// This is written from alertTask and read from the main loop, so it is kept to
+// a single byte written in one instruction: a torn read is not possible and no
+// lock is needed on the reader side. What it must NOT do is re-read NVS --
+// Preferences is not documented thread-safe, and every caller already knows the
+// new count, so hand it in instead of asking the flash again.
+static void publishQueueDepth(uint8_t count) {
+    g_watchState.queuedAlerts = count;
 }
 
 static void storePush(const String& text) {
@@ -52,7 +64,7 @@ static void storePush(const String& text) {
     storeKey(key, sizeof(key), head + count);
     prefs.putString(key, text);
     prefs.putUChar("count", count + 1);
-    refreshQueueDepth();
+    publishQueueDepth(count + 1);
 
     xSemaphoreGive(storeMutex);
 }
@@ -83,7 +95,7 @@ static void storePopFront() {
         prefs.remove(key);
         prefs.putUInt("head", (head + 1) % ALERT_QUEUE_MAX);
         prefs.putUChar("count", count - 1);
-        refreshQueueDepth();
+        publishQueueDepth(count - 1);
     }
 
     xSemaphoreGive(storeMutex);
@@ -200,12 +212,14 @@ void queueAlertMessage(const String& message) {
 void resetAlertDispatcher() {
     fallDispatch = DISPATCH_IDLE;
     fallQueued = false;
+    outcomeSince = 0;
 }
 
 void initAlertDispatcher() {
     storeMutex = xSemaphoreCreateMutex();
     prefs.begin("alerts", false);
-    refreshQueueDepth();
+    // Safe to touch NVS directly here: alertTask does not exist yet.
+    publishQueueDepth(prefs.getUChar("count", 0));
 
     if (g_watchState.queuedAlerts > 0) {
         Serial.printf(" -> NOTE: %d undelivered alert(s) recovered from storage.\n",
@@ -226,8 +240,35 @@ void updateAlertDispatcher() {
     if (g_watchState.fallState == FALL_STATE_FAILED) {
         if (fallDispatch == DISPATCH_DELIVERED) {
             g_watchState.fallState = FALL_STATE_SENT;
+            outcomeSince = millis();
             g_watchState.notificationPending = true;
             g_watchState.lastNotificationMsg = "Đã gửi lại thành công";
+        }
+    }
+
+    // Return the watch to monitoring on its own. Every other exit from these
+    // two states needs a finger on the glass, which is not something a wearer
+    // who has just fallen can be assumed to provide -- and while the state is
+    // not NORMAL the fall detector ignores new impacts entirely. See
+    // ALERT_SENT_AUTO_CLEAR_MS.
+    if (g_watchState.fallState == FALL_STATE_SENT ||
+        g_watchState.fallState == FALL_STATE_FAILED) {
+        unsigned long limit = (g_watchState.fallState == FALL_STATE_SENT)
+                                  ? ALERT_SENT_AUTO_CLEAR_MS
+                                  : ALERT_FAILED_AUTO_CLEAR_MS;
+        if (outcomeSince != 0 && millis() - outcomeSince >= limit) {
+            Serial.println(" [ALERT] Outcome screen timed out, resuming monitoring.");
+            outcomeSince = 0;
+            fallQueued = false;
+            fallDispatch = DISPATCH_IDLE;
+            g_watchState.fallDetected = false;
+            g_watchState.fallState = FALL_STATE_NORMAL;
+            g_watchState.countdownSec = 15;
+            g_watchState.currentScreen = SCREEN_HOME;
+            g_watchState.screenNeedsFullRedraw = true;
+            // Anything still queued stays queued. The worker keeps retrying it
+            // in the background; clearing the screen is not the same as
+            // abandoning the message.
         }
         return;
     }
@@ -261,10 +302,12 @@ void updateAlertDispatcher() {
 
     if (fallDispatch == DISPATCH_DELIVERED) {
         g_watchState.fallState = FALL_STATE_SENT;
+        outcomeSince = millis();
         g_watchState.notificationPending = true;
         g_watchState.lastNotificationMsg = "Đã báo người thân";
     } else if (fallDispatch == DISPATCH_FAILED) {
         g_watchState.fallState = FALL_STATE_FAILED;
+        outcomeSince = millis();
         g_watchState.notificationPending = true;
         g_watchState.lastNotificationMsg = "CHƯA GỬI ĐƯỢC - đã lưu";
     } else {
