@@ -11,8 +11,10 @@ void syncNTPTimeService() {
 
     if (!ntpRequested) {
         ntpRequested = true;
-        configTime(GMT_OFFSET_SECONDS, DAYLIGHT_OFFSET_SECONDS, NTP_SERVER_PRIMARY);
-        Serial.println(" -> NTP request sent, waiting for the clock in the background.");
+        setenv("TZ", "ICT-7", 1);
+        tzset();
+        configTime(7 * 3600, 0, "vn.pool.ntp.org", "pool.ntp.org", "time.google.com");
+        Serial.println(" -> NTP request sent (Vietnam UTC+7 ICT-7), waiting for the clock in the background.");
         return;
     }
 
