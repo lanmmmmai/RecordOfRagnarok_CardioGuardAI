@@ -44,6 +44,9 @@ class CommandCallbacks : public NimBLECharacteristicCallbacks {
 void initBLEService() {
     NimBLEDevice::init(BLE_DEVICE_NAME);
     NimBLEDevice::setPower(ESP_PWR_LVL_P9);
+    // Disable mandatory security bonding keys so phones can reconnect instantly without needing to 'Forget Device'
+    NimBLEDevice::setSecurityAuth(false, false, false);
+    NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);
 
     server = NimBLEDevice::createServer();
     server->setCallbacks(new ServerCallbacks());
