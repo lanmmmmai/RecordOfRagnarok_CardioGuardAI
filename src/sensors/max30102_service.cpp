@@ -103,13 +103,13 @@ static void updateMotionEstimate() {
     g_watchState.motionArtifact = sqrtf(var / MOTION_WINDOW) > PPG_MOTION_STD_G;
 }
 
-// Adaptive 200Hz Wrist PPG Peak Detector
+// Adaptive 200Hz Wrist PPG Peak Detector V2
 // Solves:
-// 1. Double counting (dicrotic notch) via 350ms (70 samples at 200Hz) refractory period
-// 2. High AC amplitude clipping via dynamic peak-tracking threshold (no 1000 AC cap)
+// 1. Dynamic sensitivity for low-to-medium AC amplitudes (AC 400-3500)
+// 2. Refractory period of 450ms (90 samples at 200Hz) blocking dicrotic waves (355-415ms)
 static float g_dcEst = 0.0f;
 static float g_prevAc = 0.0f;
-static float g_peakAc = 2000.0f;
+static float g_peakAc = 1000.0f;
 static uint32_t g_samplesSinceBeat = 0;
 static bool g_rising = false;
 
@@ -121,24 +121,25 @@ static bool detectBeatAdaptive(uint32_t ir) {
     // 2. Highpass AC Signal
     float acSignal = (float)ir - g_dcEst;
 
-    // 3. Dynamic Threshold Tracking
-    g_peakAc *= 0.999f;
+    // 3. Dynamic Threshold Tracking (decay to baseline)
+    g_peakAc *= 0.998f;
+    if (g_peakAc < 400.0f) g_peakAc = 400.0f;
     if (acSignal > g_peakAc) {
         g_peakAc = acSignal;
     }
-    float threshold = g_peakAc * 0.35f;
+    float threshold = g_peakAc * 0.25f;
 
     g_samplesSinceBeat++;
 
-    // 4. Zero-Crossing Slope Peak Detection with 350ms (70 samples) Refractory Guard
+    // 4. Zero-Crossing Slope Peak Detection with 450ms (90 samples) Refractory Guard
     bool beatDetected = false;
     if (acSignal > g_prevAc) {
         g_rising = true;
     } else if (g_rising && acSignal < g_prevAc) {
-        if (g_prevAc > threshold && g_prevAc > 300.0f && g_samplesSinceBeat >= 100) {
+        if (g_prevAc > threshold && g_prevAc > 150.0f && g_samplesSinceBeat >= 90) {
             beatDetected = true;
             g_samplesSinceBeat = 0;
-            if (g_prevAc > 800.0f) g_peakAc = g_prevAc;
+            g_peakAc = g_prevAc;
         }
         g_rising = false;
     }
