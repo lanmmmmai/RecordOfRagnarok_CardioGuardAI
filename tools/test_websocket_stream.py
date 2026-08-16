@@ -4,7 +4,7 @@ import time
 import json
 import sys
 
-WATCH_IP = sys.argv[1] if len(sys.argv) > 1 else '192.168.20.152'
+WATCH_IP = sys.argv[1] if len(sys.argv) > 1 else '192.168.244.152'
 WATCH_PORT = 8080
 
 print("==========================================================================")

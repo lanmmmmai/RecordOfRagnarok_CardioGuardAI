@@ -7,7 +7,7 @@ export default function RealtimeDeviceBridge({
   setConnectionState
 }) {
   const [watchIP, setWatchIP] = useState(() => {
-    return localStorage.getItem('safewatch_ip') || '192.168.20.152';
+    return localStorage.getItem('safewatch_ip') || '192.168.244.152';
   });
   const [wsStatus, setWsStatus] = useState({ isConnected: false, message: 'Đang tự động kết nối...' });
 
@@ -85,7 +85,7 @@ export default function RealtimeDeviceBridge({
             type="text"
             value={watchIP}
             onChange={handleIPChange}
-            placeholder="192.168.20.152"
+            placeholder="192.168.244.152"
             className="bg-transparent text-cyan-300 font-mono text-xs focus:outline-none w-28 text-center"
           />
         </div>

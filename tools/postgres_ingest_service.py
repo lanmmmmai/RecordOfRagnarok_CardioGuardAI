@@ -1,6 +1,6 @@
 """
 SafeWatch PostgreSQL Real-time Ingestion Service with Touch Event Logging
-Listens to ESP32-S3 WebSocket Telemetry (ws://192.168.20.152:8080)
+Listens to ESP32-S3 WebSocket Telemetry (ws://192.168.244.152:8080)
 and writes records continuously to local PostgreSQL (safewatch_db).
 """
 
@@ -12,7 +12,7 @@ import asyncpg
 from datetime import datetime
 
 # Configuration
-WATCH_IP = sys.argv[1] if len(sys.argv) > 1 else '192.168.20.152'
+WATCH_IP = sys.argv[1] if len(sys.argv) > 1 else '192.168.244.152'
 WATCH_PORT = 8080
 WS_URL = f"ws://{WATCH_IP}:{WATCH_PORT}"
 
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS safewatch_telemetry (
     charging BOOLEAN DEFAULT FALSE,
     rssi INT DEFAULT 0,
     uptime_sec BIGINT DEFAULT 0,
-    device_ip VARCHAR(50) DEFAULT '192.168.20.152'
+    device_ip VARCHAR(50) DEFAULT '192.168.244.152'
 );
 
 CREATE TABLE IF NOT EXISTS safewatch_fall_events (
@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS safewatch_fall_events (
     accel_mag_g NUMERIC(5,2) DEFAULT 0.00,
     action_taken TEXT,
     telegram_notified BOOLEAN DEFAULT TRUE,
-    device_ip VARCHAR(50) DEFAULT '192.168.20.152'
+    device_ip VARCHAR(50) DEFAULT '192.168.244.152'
 );
 """
 

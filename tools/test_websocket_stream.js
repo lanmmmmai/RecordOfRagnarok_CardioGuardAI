@@ -1,11 +1,11 @@
 /**
  * Automated Verification & Telemetry Audit Test Script
- * Target: ESP32-S3 SafeWatch WebSocket Server (ws://192.168.20.152:8080)
+ * Target: ESP32-S3 SafeWatch WebSocket Server (ws://192.168.244.152:8080)
  */
 
 const WebSocket = require('ws');
 
-const WATCH_IP = process.argv[2] || '192.168.20.152';
+const WATCH_IP = process.argv[2] || '192.168.244.152';
 const WATCH_PORT = 8080;
 const WS_URL = `ws://${WATCH_IP}:${WATCH_PORT}`;
 

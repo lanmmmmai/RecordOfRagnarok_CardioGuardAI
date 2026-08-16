@@ -4,7 +4,7 @@ class WebSocketBridgeService {
   constructor() {
     this.ws = null;
     const savedIP = typeof window !== 'undefined' ? localStorage.getItem('safewatch_ip') : null;
-    this.ip = savedIP && savedIP.trim() !== '' ? savedIP.trim() : '192.168.20.152';
+    this.ip = savedIP && savedIP.trim() !== '' ? savedIP.trim() : '192.168.244.152';
     this.port = 8080;
     this.isConnected = false;
     this.autoReconnect = true;

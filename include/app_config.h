@@ -101,7 +101,7 @@
 // LED drive current. 0x24 (~7mA) is a finger-on-sensor setting; skin on the
 // underside of the wrist has far fewer capillaries and needs more light.
 // Raise or lower this against the raw IR values in the serial log.
-#define MAX30102_LED_BRIGHTNESS  0x65
+#define MAX30102_LED_BRIGHTNESS  0x40
 
 // Minimum IR reading that counts as skin contact.
 //
@@ -117,13 +117,13 @@
 // sensor reads 123,000-151,000. An order of magnitude apart, so 25,000 sits
 // comfortably in the gap and is now backed by a reading rather than a bench
 // guess.
-#define PPG_CONTACT_IR_THRESHOLD 30000UL
+#define PPG_CONTACT_IR_THRESHOLD 25000UL
 
 // Contact is harder to lose than to gain. Once the finger is on, IR has to fall
 // well below the acquire threshold before contact is doubted -- pressing a
 // finger down is never perfectly steady, and the pulsatile component alone
 // swings the reading by a few percent every beat.
-#define PPG_CONTACT_IR_RELEASE   22000UL
+#define PPG_CONTACT_IR_RELEASE   20000UL
 
 // How many consecutive sub-threshold samples mean the finger really left, as
 // opposed to a twitch. 200 samples at 200 Hz is one second.

@@ -63,12 +63,11 @@ static float kalmanUpdate(float measurement) {
     return kalmanX;
 }
 
-// Lowpass DC Estimator (cutoff ~0.1Hz at 200Hz) & AC 6Hz Lowpass Filter
+// Lowpass DC Estimator (cutoff ~0.2Hz at 200Hz)
 static float g_dcEstIr = 0.0f;
 static float g_dcEstRed = 0.0f;
-static float g_acFilteredIr = 0.0f;
 static float g_prevAc = 0.0f;
-static float g_peakAc = 80.0f;
+static float g_peakAc = 120.0f;
 static uint32_t g_samplesSinceBeat = 100;
 static bool g_rising = false;
 
@@ -79,48 +78,46 @@ static bool detectBeatAdaptive(uint32_t ir, uint32_t red) {
     if (g_dcEstIr == 0.0f) g_dcEstIr = (float)ir;
     g_dcEstIr = 0.992f * g_dcEstIr + 0.008f * (float)ir;
 
-    // Track cycle peak and valley on raw values for SpO2 ratio
+    // Track cycle peak and valley
     if (ir < cycleMinIr) cycleMinIr = ir;
     if (ir > cycleMaxIr) cycleMaxIr = ir;
     if (red < cycleMinRed) cycleMinRed = red;
     if (red > cycleMaxRed) cycleMaxRed = red;
 
-    // Extract AC component and filter out high-frequency noise / dicrotic jitter
-    float rawAcIr = (float)ir - g_dcEstIr;
-    g_acFilteredIr = 0.82f * g_acFilteredIr + 0.18f * rawAcIr;
+    // Highpass AC Signal
+    float acSignal = (float)ir - g_dcEstIr;
 
-    // Dynamic peak tracker with smooth exponential decay
-    g_peakAc *= 0.996f;
-    if (g_peakAc < 30.0f) g_peakAc = 30.0f;
-    if (g_acFilteredIr > g_peakAc) {
-        g_peakAc = g_acFilteredIr;
+    // Adaptive peak tracking
+    g_peakAc *= 0.994f;
+    if (g_peakAc < 40.0f) g_peakAc = 40.0f;
+    if (acSignal > g_peakAc) {
+        g_peakAc = acSignal;
     }
-    float threshold = g_peakAc * 0.40f;
+    float threshold = g_peakAc * 0.35f;
 
     g_samplesSinceBeat++;
 
-    // Systolic Peak detection: local maximum of smoothed wave with refractory period >= 65 samples (325ms = max 184 BPM)
+    // Peak slope detector with 500ms (100 samples) dicrotic refractory block
     bool beatDetected = false;
-    if (g_acFilteredIr > g_prevAc) {
+    if (acSignal > g_prevAc) {
         g_rising = true;
-    } else if (g_rising && g_acFilteredIr < g_prevAc) {
-        if (g_prevAc > threshold && g_prevAc > 20.0f && g_samplesSinceBeat >= 65) {
+    } else if (g_rising && acSignal < g_prevAc) {
+        if (g_prevAc > threshold && g_prevAc > 40.0f && g_samplesSinceBeat >= 100) {
             beatDetected = true;
             g_samplesSinceBeat = 0;
             g_peakAc = g_prevAc;
         }
         g_rising = false;
     }
-    g_prevAc = g_acFilteredIr;
+    g_prevAc = acSignal;
     return beatDetected;
 }
 
 static void resetMeasurement() {
     g_dcEstIr = 0.0f;
     g_dcEstRed = 0.0f;
-    g_acFilteredIr = 0.0f;
     g_prevAc = 0.0f;
-    g_peakAc = 80.0f;
+    g_peakAc = 120.0f;
     g_samplesSinceBeat = 100;
     g_rising = false;
     rateIndex = 0;
@@ -333,9 +330,9 @@ void updateMAX30102Service() {
                                 float acRedPp = (float)(cycleMaxRed - cycleMinRed);
                                 float acIrPp  = (float)(cycleMaxIr - cycleMinIr);
 
-                                if (acIrPp > 15.0f && acRedPp > 10.0f) {
+                                if (acIrPp > 25.0f && acRedPp > 20.0f) {
                                     float rRatio = (acRedPp / g_dcEstRed) / (acIrPp / g_dcEstIr);
-                                    float instantSpo2 = 110.0f - 18.0f * rRatio;
+                                    float instantSpo2 = 104.0f - 17.0f * rRatio;
 
                                     // Out of range means discard, not substitute.
                                     //
@@ -367,7 +364,7 @@ void updateMAX30102Service() {
                                     // Only the SpO2 update is skipped. The beat
                                     // itself was fine and the heart rate derived
                                     // from it is already committed above.
-                                    if (instantSpo2 >= 85.0f) {
+                                    if (instantSpo2 >= 80.0f) {
                                         spo2History[spo2Index] = (uint8_t)(instantSpo2 + 0.5f);
                                         spo2Index = (spo2Index + 1) % SPO2_SIZE;
 
