@@ -28,24 +28,44 @@ export default function TrendChart({ isConnected, rawTelemetry }) {
   const [history, setHistory] = useState(() => []);
   const lastSampleTimeRef = useRef(0);
 
-  // Sample real data every 1 second to create a clean, scientifically accurate timeline
+  // One sample a second while the watch is on a wrist, and nothing at all while
+  // it is off.
+  //
+  // This used to record on every frame the device was connected, writing
+  // pulse: 0, spo2: 0 whenever skinContact was false. Those zeros were real
+  // rows: they plotted as a line dropping to the floor of the chart, so a watch
+  // sitting on a desk drew the same shape as a wearer whose pulse had stopped.
+  // The statistics below already filtered them back out with h.hasSkin, which
+  // is the tell -- every consumer had to undo the write, so the write was the
+  // thing to remove.
+  //
+  // Skipping the sample rather than pushing a gap means the 25-point window
+  // spans wall-clock time only while worn. Taking the watch off and putting it
+  // back leaves the earlier readings adjacent to the later ones with no marker
+  // between them, which is correct for a rolling vitals trend and wrong for
+  // anything that needs elapsed time -- nothing here does, and the axis is
+  // labelled with each sample's own timestamp.
   useEffect(() => {
     if (!isConnected || !rawTelemetry) return;
+    if (!rawTelemetry.skinContact) return;
 
     const now = Date.now();
     if (now - lastSampleTimeRef.current < 1000) return;
     lastSampleTimeRef.current = now;
 
-    const hasSkin = Boolean(rawTelemetry.skinContact);
-    const pulse = hasSkin && rawTelemetry.pulse > 0 ? rawTelemetry.pulse : 0;
-    const spo2 = hasSkin && rawTelemetry.spo2Valid && rawTelemetry.spo2 > 0 ? rawTelemetry.spo2 : 0;
+    const pulse = rawTelemetry.pulse > 0 ? rawTelemetry.pulse : 0;
+    const spo2 = rawTelemetry.spo2Valid && rawTelemetry.spo2 > 0 ? rawTelemetry.spo2 : 0;
     const timeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
     setHistory(prev => {
-      const next = [...prev, { time: timeStr, pulse, spo2, hasSkin }];
+      const next = [...prev, { time: timeStr, pulse, spo2, hasSkin: true }];
       return next.slice(-25); // Keep rolling 25-second window
     });
   }, [isConnected, rawTelemetry]);
+
+  // The single condition the effect above samples on, named once so the badge
+  // and the banner cannot drift away from what is actually being recorded.
+  const isSampling = Boolean(isConnected && rawTelemetry?.skinContact);
 
   // Accurate Statistical Formulas
   const activePulses = history.filter(h => h.hasSkin && h.pulse > 0).map(h => h.pulse);
@@ -176,11 +196,34 @@ export default function TrendChart({ isConnected, rawTelemetry }) {
           </p>
         </div>
 
-        <div className="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-slate-950/80 border border-slate-800 text-xs font-mono text-cyan-400">
-          <Activity className="w-4 h-4 animate-pulse" />
-          <span>{history.length} Mẫu Thời Gian</span>
+        {/* The pulsing icon used to run unconditionally, so a chart that had
+            stopped taking samples looked identical to one still filling. It now
+            only animates while a sample is actually due. */}
+        <div className={`flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-slate-950/80 border text-xs font-mono ${
+          isSampling ? 'border-slate-800 text-cyan-400' : 'border-amber-500/40 text-amber-300'
+        }`}>
+          <Activity className={`w-4 h-4 ${isSampling ? 'animate-pulse' : ''}`} />
+          <span>
+            {isSampling
+              ? `${history.length} Mẫu Thời Gian`
+              : `${history.length} mẫu • tạm dừng`}
+          </span>
         </div>
       </div>
+
+      {/* Says why the line is not advancing. Without this the chart simply
+          freezes, which reads as a broken page rather than a watch that is off
+          the wrist. */}
+      {!isSampling && (
+        <div className="flex items-center space-x-2.5 p-3 rounded-2xl bg-amber-500/15 border border-amber-500/40 text-amber-300 text-xs font-mono font-bold">
+          <Activity className="w-4 h-4 text-amber-400 shrink-0" />
+          <span>
+            {isConnected
+              ? 'CHƯA ĐEO ĐỒNG HỒ — TẠM DỪNG LẤY MẪU. Biểu đồ giữ nguyên các mẫu đo được gần nhất.'
+              : 'CHƯA KẾT NỐI ĐỒNG HỒ — KHÔNG CÓ MẪU NÀO ĐƯỢC GHI.'}
+          </span>
+        </div>
+      )}
 
       {/* Chart Canvas Area */}
       <div className="h-72 w-full relative">

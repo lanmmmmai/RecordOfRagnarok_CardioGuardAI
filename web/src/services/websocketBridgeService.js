@@ -143,6 +143,16 @@ class WebSocketBridgeService {
         ip: data.ip || this.ip,
         timestamp: new Date().toLocaleTimeString('vi-VN')
       };
+      // Held for the two report modals, which read this directly at click time
+      // rather than subscribing -- they are mounted by App while the
+      // subscription lives in Dashboard.
+      //
+      // Kept regardless of skinContact on purpose. Battery, RSSI, uptime,
+      // fallState and the sensor health flags are all measured with the watch
+      // off the wrist and are exactly what tells you the device is alive. The
+      // vitals inside it are the part that is meaningless without contact, and
+      // every consumer gates those on telemetry.skinContact before showing
+      // them; see readVitals() in ClinicalReportModal.
       this.latestTelemetry = telemetry;
       this.telemetryListeners.forEach(fn => fn(telemetry));
 
