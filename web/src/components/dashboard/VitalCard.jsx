@@ -1,5 +1,5 @@
 import React from 'react';
-import { Heart, ShieldCheck, TrendingUp, Wind } from 'lucide-react';
+import { Heart, ShieldCheck, Battery, Wind, Zap } from 'lucide-react';
 import ScrollReveal from '../ScrollReveal';
 
 export default function VitalCard({ isConnected, rawTelemetry }) {
@@ -28,9 +28,10 @@ export default function VitalCard({ isConnected, rawTelemetry }) {
     : "0.00";
   const sqiVal = hasSkinContact ? (rawTelemetry?.quality || 0) : 0;
 
-  // Battery and Voltage ALWAYS retain real measured hardware status
-  const batteryVal = isConnected ? `${rawTelemetry?.battery || 0}%` : "0%";
-  const voltageVal = isConnected && rawTelemetry?.voltage ? `${rawTelemetry.voltage.toFixed(2)}V` : "0.00V";
+  // Battery and Voltage cleanly separated
+  const batteryPct = isConnected ? (rawTelemetry?.battery || 0) : 0;
+  const voltage = isConnected && rawTelemetry?.voltage ? rawTelemetry.voltage : 0.0;
+  const isCharging = isConnected && voltage >= 4.15;
 
   const cards = [
     {
@@ -56,13 +57,13 @@ export default function VitalCard({ isConnected, rawTelemetry }) {
       iconColor: "text-cyan-400 bg-cyan-500/10"
     },
     {
-      title: "CẢM BIẾN & ĐIỆN ÁP PIN",
-      value: batteryVal,
-      unit: voltageVal,
-      status: isConnected ? (rawTelemetry?.charging ? "ĐANG SẠC PIN" : "PIN HOẠT ĐỘNG") : "CHƯA KẾT NỐI",
-      statusColor: isConnected ? "text-emerald-400 border-emerald-500/40 bg-emerald-500/15" : "text-slate-400 border-slate-700 bg-slate-800/40",
-      subInfo: `Hardware: ${isConnected && rawTelemetry?.sensors?.imuOk ? 'IMU/PPG OK' : '0'}`,
-      icon: TrendingUp,
+      title: "DUNG LƯỢNG PIN & NGUỒN (ETA6096)",
+      value: `${batteryPct}`,
+      unit: "%",
+      status: !isConnected ? "CHƯA KẾT NỐI" : (isCharging ? "⚡ ĐANG CẮM SẠC" : "🔋 ĐANG DÙNG PIN"),
+      statusColor: !isConnected ? "text-slate-400 border-slate-700 bg-slate-800/40" : (isCharging ? "text-cyan-400 border-cyan-500/40 bg-cyan-500/15" : "text-emerald-400 border-emerald-500/40 bg-emerald-500/15"),
+      subInfo: isConnected ? `Điện áp: ${voltage.toFixed(2)}V • LiPo 3.7V` : "Điện áp: 0.00V",
+      icon: Battery,
       badgeBorder: "border-emerald-500/30 hover:border-emerald-400/60 shadow-emerald-500/5",
       iconColor: "text-emerald-400 bg-emerald-500/10"
     },
@@ -88,28 +89,25 @@ export default function VitalCard({ isConnected, rawTelemetry }) {
             <div
               tabIndex={0}
               aria-label={`${c.title}: ${c.value} ${c.unit}, trạng thái ${c.status}`}
-              className={`glass-panel p-5 rounded-3xl border ${c.badgeBorder} shadow-xl hover:scale-[1.02] transition-all duration-300 bg-slate-900/80 backdrop-blur-xl group cursor-default relative overflow-hidden`}
+              className={`glass-panel rounded-3xl p-5 border ${c.badgeBorder} space-y-4 hover:scale-[1.02] focus:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-cyan-400/50 transition-all duration-300 relative overflow-hidden group shadow-lg`}
             >
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[11px] font-mono font-bold text-slate-400 tracking-wider">
-                  {c.title}
-                </span>
-                <div className={`w-8 h-8 rounded-xl ${c.iconColor} flex items-center justify-center transition-transform group-hover:scale-110`}>
-                  <Icon className="w-4 h-4" />
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">{c.title}</span>
+                <div className={`p-2.5 rounded-2xl ${c.iconColor} transition-transform duration-300 group-hover:rotate-6`}>
+                  <Icon className="w-5 h-5" />
                 </div>
               </div>
 
-              <div className="flex items-baseline space-x-2 my-1">
+              <div className="flex items-baseline space-x-2">
                 <span className="text-3xl font-black text-white font-mono tracking-tight">{c.value}</span>
-                <span className="text-xs text-slate-400 font-bold">{c.unit}</span>
+                <span className="text-sm font-bold text-slate-400 font-mono">{c.unit}</span>
               </div>
 
-              <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between">
-                <span className={`inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${c.statusColor}`}>
-                  <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
-                  <span>{c.status}</span>
+              <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
+                <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full border ${c.statusColor} font-mono tracking-wide`}>
+                  {c.status}
                 </span>
-                <span className="text-[11px] text-slate-400 font-mono truncate">{c.subInfo}</span>
+                <span className="text-[11px] text-slate-400 font-mono font-medium">{c.subInfo}</span>
               </div>
             </div>
           </ScrollReveal>
