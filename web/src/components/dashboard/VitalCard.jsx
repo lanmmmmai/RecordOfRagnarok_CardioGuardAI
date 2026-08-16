@@ -70,7 +70,7 @@ export default function VitalCard({ isConnected, rawTelemetry }) {
       title: "PHÁT HIỆN TÉ NGÃ & VA ĐẬP (IMU 6-TRỤC)",
       value: !isConnected ? "CHƯA KẾT NỐI" : (rawTelemetry?.fallState >= 2 ? "🚨 TÉ NGÃ!" : "AN TOÀN"),
       unit: isConnected && rawTelemetry?.fallState > 1 ? `SOS ${rawTelemetry?.countdown || 0}s` : "GIÁM SÁT 235Hz",
-      status: !isConnected ? "OFFLINE" : (rawTelemetry?.fallState >= 2 ? "KÍCH HOẠT CẤP CỨU" : "BÌNH THƯỜNG (1g)"),
+      status: !isConnected ? "OFFLINE" : (rawTelemetry?.fallState >= 2 ? "KÍCH HOẠT CẤP CỨU" : "BÌNH THƯỜNG"),
       statusColor: !isConnected ? "text-slate-400 border-slate-700 bg-slate-800/40" : (rawTelemetry?.fallState >= 2 ? "text-rose-400 border-rose-500/50 bg-rose-500/25 animate-pulse" : "text-emerald-400 border-emerald-500/40 bg-emerald-500/15"),
       subInfo: isConnected ? `Gia tốc: ${rawTelemetry?.accel ? (rawTelemetry.accel.z / 4096.0).toFixed(2) : '1.00'}g | ${rawTelemetry?.rssi || -50} dBm` : "Chưa có tín hiệu",
       icon: ShieldCheck,
