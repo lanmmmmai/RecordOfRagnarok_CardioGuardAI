@@ -10,9 +10,9 @@ export default function VitalCard({ isConnected, rawTelemetry }) {
 
   const pulseStatus = isConnected
     ? (!hasSkinContact || pulseVal === 0
-        ? "CHƯA ĐEO DA (0 BPM)"
+        ? "CHƯA CÓ TÍN HIỆU"
         : pulseVal > 100 ? "NHỊP NHANH" : pulseVal < 55 ? "NHỊP CHẬM" : "BÌNH THƯỜNG")
-    : "CHƯA KẾT NỐI (0 BPM)";
+    : "CHƯA KẾT NỐI";
 
   // SpO2 strictly 0% when not touching skin
   const rawSpo2 = hasSkinContact && rawTelemetry?.spo2Valid && rawTelemetry?.spo2 > 0 ? rawTelemetry.spo2 : 0;

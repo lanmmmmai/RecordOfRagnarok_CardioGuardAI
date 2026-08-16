@@ -47,10 +47,22 @@ export default function DataCollectorModule({ isConnected, rawTelemetry }) {
     if (!isConnected || !rawTelemetry || !isRecording) return;
     if (!rawTelemetry.skinContact || (rawTelemetry.raw && rawTelemetry.raw.ir < 20000)) return;
 
-    setSamplesCount(prev => prev + 1);
-
     const pulse = rawTelemetry.pulse > 0 ? rawTelemetry.pulse : 0;
     const spo2 = rawTelemetry.spo2Valid && rawTelemetry.spo2 > 0 ? rawTelemetry.spo2 : 0;
+
+    // Detect clinical anomalies
+    const isFall = rawTelemetry.fallState >= 2;
+
+    // BỘ LỌC DỮ LIỆU RÁC (CLEAN DATA FILTER):
+    // 1. Loại bỏ các gói tin rác: có nhịp tim mà thiếu SpO2, hoặc có SpO2 mà thiếu nhịp tim, hoặc trống số
+    // 2. Chỉ ghi nhận vào bảng khi ĐỦ CẢ HAI thông số sinh hiệu (pulse > 0 VÀ spo2 > 0), hoặc sự cố Té ngã khẩn cấp
+    const hasCompleteVitals = (pulse > 0 && spo2 > 0);
+    if (!hasCompleteVitals && !isFall) {
+      return; // BỎ QUA DỮ LIỆU RÁC / CHƯA ĐỦ THÔNG SỐ
+    }
+
+    setSamplesCount(prev => prev + 1);
+
     const pi = rawTelemetry.quality ? ((rawTelemetry.quality / 50.0) * 1.2).toFixed(2) : "0.00";
     const sqi = rawTelemetry.quality || 0;
     const accX = rawTelemetry.accel ? (rawTelemetry.accel.x / 4096.0).toFixed(2) : "0.00";
@@ -60,8 +72,6 @@ export default function DataCollectorModule({ isConnected, rawTelemetry }) {
     const gyroY = rawTelemetry.gyro?.y ?? 0;
     const gyroZ = rawTelemetry.gyro?.z ?? 0;
 
-    // Detect clinical anomalies
-    const isFall = rawTelemetry.fallState >= 2;
     const isTachycardia = pulse > 110;
     const isBradycardia = pulse > 0 && pulse < 50;
     const isHypoxia = spo2 > 0 && spo2 < 94;
@@ -200,7 +210,7 @@ export default function DataCollectorModule({ isConnected, rawTelemetry }) {
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
             {isWorn
-              ? "Tự động ghi 1 bản ghi mỗi 5 giây — Tự động ghim nhãn cảnh báo đỏ tức thì khi có biến động bất thường"
+              ? "Tự động ghi 1 bản ghi mỗi 5 giây — Tự động lọc bỏ dữ liệu rác/thiếu số, chỉ lưu khi đủ cả Nhịp tim & SpO2 và ghim cảnh báo đỏ khi có bất thường"
               : "Đồng hồ chưa tiếp xúc da — Tự động tạm dừng thu thập dữ liệu bảng"}
           </p>
         </div>
