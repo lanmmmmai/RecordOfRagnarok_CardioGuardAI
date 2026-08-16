@@ -247,11 +247,11 @@
 #define QMI_SAMPLE_GAP_US         4300
 
 // Phase 1 -- free fall. Below this total acceleration the wrist is unsupported.
-#define FALL_FREEFALL_G           0.4f
+#define FALL_FREEFALL_G           0.35f
 
 // Phase 2 -- impact, when a free fall preceded it. Lower than the standalone
 // figure below because free fall has already made a fall likely.
-#define FALL_IMPACT_G             2.5f
+#define FALL_IMPACT_G             3.5f
 
 // Phase 2, second entry path -- impact with NO preceding free fall.
 //
@@ -428,7 +428,7 @@
 // given up by the change: the three non-fall events never reach confirmation
 // at all, so no ratio of theirs is ever tested. 0.50 sits below the lowest
 // real fall with margin and still means "motionless for most of the window".
-#define FALL_STILLNESS_MIN_CALM_RATIO  0.50f
+#define FALL_STILLNESS_MIN_CALM_RATIO  0.70f
 
 // Phase 4 -- posture must actually have changed, in degrees between the
 // gravity direction before the event and after it.

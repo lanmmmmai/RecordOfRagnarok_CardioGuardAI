@@ -131,6 +131,19 @@ void cancelFallAlert() {
 void updateFallDetector() {
     if (!g_watchState.fallMonitoringActive) return;
 
+    // RULE: Chỉ phát hiện té ngã khi người dùng ĐANG ĐEO ĐỒNG HỒ (skinContact == true).
+    // Tránh báo động giả khi nhấc/đặt đồng hồ trên bàn hoặc khi không đeo.
+    if (!g_watchState.skinContact) {
+        freeFallDetected = false;
+        confirmStart = 0;
+        stillSamples = 0;
+        calmSamples = 0;
+        if (g_watchState.fallState == FALL_STATE_SUSPECTED) {
+            g_watchState.fallState = FALL_STATE_NORMAL;
+        }
+        return;
+    }
+
     // Without a working IMU there is nothing to detect. Bail out rather than
     // evaluating stale accelerometer values; the UI reports the outage.
     if (!g_watchState.imuOk) {

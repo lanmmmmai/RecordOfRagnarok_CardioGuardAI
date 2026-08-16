@@ -68,14 +68,14 @@ export default function VitalCard({ isConnected, rawTelemetry }) {
     },
     {
       title: "PHÁT HIỆN TÉ NGÃ & VA ĐẬP (IMU 6-TRỤC)",
-      value: !isConnected ? "CHƯA KẾT NỐI" : (rawTelemetry?.fallState === 0 ? "AN TOÀN" : rawTelemetry?.fallState === 1 ? "⚠️ VA ĐẬP" : "🚨 TÉ NGÃ!"),
+      value: !isConnected ? "CHƯA KẾT NỐI" : (rawTelemetry?.fallState >= 2 ? "🚨 TÉ NGÃ!" : "AN TOÀN"),
       unit: isConnected && rawTelemetry?.fallState > 1 ? `SOS ${rawTelemetry?.countdown || 0}s` : "GIÁM SÁT 235Hz",
-      status: !isConnected ? "OFFLINE" : (rawTelemetry?.fallState === 0 ? "BÌNH THƯỜNG (1g)" : rawTelemetry?.fallState === 1 ? "NGHI NGỜ VA CHẠM" : "KÍCH HOẠT CẤP CỨU"),
-      statusColor: !isConnected ? "text-slate-400 border-slate-700 bg-slate-800/40" : (rawTelemetry?.fallState === 0 ? "text-emerald-400 border-emerald-500/40 bg-emerald-500/15" : rawTelemetry?.fallState === 1 ? "text-amber-400 border-amber-500/50 bg-amber-500/20" : "text-rose-400 border-rose-500/50 bg-rose-500/25 animate-pulse"),
+      status: !isConnected ? "OFFLINE" : (rawTelemetry?.fallState >= 2 ? "KÍCH HOẠT CẤP CỨU" : "BÌNH THƯỜNG (1g)"),
+      statusColor: !isConnected ? "text-slate-400 border-slate-700 bg-slate-800/40" : (rawTelemetry?.fallState >= 2 ? "text-rose-400 border-rose-500/50 bg-rose-500/25 animate-pulse" : "text-emerald-400 border-emerald-500/40 bg-emerald-500/15"),
       subInfo: isConnected ? `Gia tốc: ${rawTelemetry?.accel ? (rawTelemetry.accel.z / 4096.0).toFixed(2) : '1.00'}g | ${rawTelemetry?.rssi || -50} dBm` : "Chưa có tín hiệu",
       icon: ShieldCheck,
-      badgeBorder: rawTelemetry?.fallState > 0 ? "border-rose-500/50 hover:border-rose-400/80 shadow-rose-500/10" : "border-emerald-500/30 hover:border-emerald-400/60 shadow-emerald-500/5",
-      iconColor: rawTelemetry?.fallState > 0 ? "text-rose-400 bg-rose-500/15" : "text-emerald-400 bg-emerald-500/10"
+      badgeBorder: rawTelemetry?.fallState >= 2 ? "border-rose-500/50 hover:border-rose-400/80 shadow-rose-500/10" : "border-emerald-500/30 hover:border-emerald-400/60 shadow-emerald-500/5",
+      iconColor: rawTelemetry?.fallState >= 2 ? "text-rose-400 bg-rose-500/15" : "text-emerald-400 bg-emerald-500/10"
     }
   ];
 

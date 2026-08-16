@@ -61,7 +61,7 @@ export default function DataCollectorModule({ isConnected, rawTelemetry }) {
     const gyroZ = rawTelemetry.gyro?.z ?? 0;
 
     // Detect clinical anomalies
-    const isFall = rawTelemetry.fallState !== 0;
+    const isFall = rawTelemetry.fallState >= 2;
     const isTachycardia = pulse > 110;
     const isBradycardia = pulse > 0 && pulse < 50;
     const isHypoxia = spo2 > 0 && spo2 < 94;
@@ -96,7 +96,7 @@ export default function DataCollectorModule({ isConnected, rawTelemetry }) {
       gyroZ,
       battery: rawTelemetry.battery || 0,
       voltage: rawTelemetry.voltage || 0.0,
-      fallState: rawTelemetry.fallState === 0 ? "AN TOÀN" : "CẢNH BÁO",
+      fallState: rawTelemetry.fallState >= 2 ? "CẢNH BÁO" : "AN TOÀN",
       eventStatus,
       isAnomaly,
       activeTag: sessionTags.length > 0 ? sessionTags[sessionTags.length - 1].tag : '5s Chuẩn Y Tế'
