@@ -60,7 +60,7 @@ export default function VitalCard({ isConnected, rawTelemetry }) {
       title: "DUNG LƯỢNG PIN & NGUỒN (ETA6096)",
       value: `${batteryPct}`,
       unit: "%",
-      status: !isConnected ? "CHƯA KẾT NỐI" : (isCharging ? "⚡ ĐANG CẮM SẠC" : "🔋 ĐANG DÙNG PIN"),
+      status: !isConnected ? "CHƯA KẾT NỐI" : (isCharging ? "⚡ ĐANG CẮM SẠC" : "DÙNG PIN"),
       statusColor: !isConnected ? "text-slate-400 border-slate-700 bg-slate-800/40" : (isCharging ? "text-cyan-400 border-cyan-500/40 bg-cyan-500/15" : "text-emerald-400 border-emerald-500/40 bg-emerald-500/15"),
       subInfo: isConnected ? `Điện áp: ${voltage.toFixed(2)}V • LiPo 3.7V` : "Điện áp: 0.00V",
       icon: Battery,
